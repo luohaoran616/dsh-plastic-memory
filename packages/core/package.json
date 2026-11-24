@@ -1,0 +1,38 @@
+{
+  "name": "@plastic/core",
+  "version": "0.0.0",
+  "description": "Memory store, storage and search core shared by the plastic-memory DSH plugin, MCP server and WebUI",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "publishConfig": {
+    "main": "./lib/index.js",
+    "exports": {
+      ".": "./lib/index.js",
+      "./*": "./lib/*"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@node-rs/jieba": "2.0.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

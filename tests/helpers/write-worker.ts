@@ -7,8 +7,8 @@
  */
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { FileTable } from '../../src/storage/file-table.ts'
-import type { RecallStats } from '../../src/storage/schema.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import type { RecallStats } from '@plastic/core/storage/schema.ts'
 import { record } from './record.ts'
 import { InMemoryKvTable } from './in-memory-kv.ts'
 

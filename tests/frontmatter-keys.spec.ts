@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { memoryRecordSchema, type MemoryRecord } from '../src/record-schema.ts'
-import { encodeRecord, splitFrontmatter } from '../src/storage/frontmatter.ts'
+import { memoryRecordSchema, type MemoryRecord } from '@plastic/core/record-schema.ts'
+import { encodeRecord, splitFrontmatter } from '@plastic/core/storage/frontmatter.ts'
 
 // 边缘案例清单（每条一个 it）：
 // 1. 派生断言：写入 frontmatter 的键集 ≡ schema 键集 − 别处映射的键集

@@ -1,12 +1,12 @@
-import type { MemoryStore } from '../store.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 import type { PendingDecisionsStore } from '../governance/decisions.ts'
 import type { AdviceIgnoreStore } from '../governance/advice-ignores.ts'
 import { editFingerprint, isConflicting, type SnapshotStore } from '../governance/snapshots.ts'
 import { asUndoable, expectedFingerprints, isStillOwnWrite, undoRuleOf, undoStateOf, undoStateOfAll, type TargetCopies, type UndoableEntry, type UndoRule } from '../governance/undo-rules.ts'
 import { verdictLoser, type MemorySnapshot, type SnapshotRecord } from '../governance/schema.ts'
-import type { MemoryRecord } from '../record-schema.ts'
-import { RecordNotFoundError } from '../errors.ts'
-import { scopeAt, type Scope } from '../scope.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { RecordNotFoundError } from '@plastic/core/errors.ts'
+import { scopeAt, type Scope } from '@plastic/core/scope.ts'
 import { crossWorkspaceNote, gateRecords, isCopyOf, isVisible, locateCopy, type CrossWorkspaceRejection, type GovernanceContext } from './workspace-gate.ts'
 
 export interface UndoDeps {

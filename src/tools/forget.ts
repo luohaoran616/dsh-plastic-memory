@@ -1,15 +1,15 @@
-import type { MemoryStore, MemoryLogger } from '../store.ts'
+import type { MemoryStore, MemoryLogger } from '@plastic/core/store.ts'
 import type { SnapshotStore } from '../governance/snapshots.ts'
 import type { PendingDecisionsStore } from '../governance/decisions.ts'
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { MemorySnapshot } from '../governance/schema.ts'
 import { editFingerprint, redactRecord } from '../governance/snapshots.ts'
-import { hasSecret, maskSecrets } from '../secrets.ts'
+import { hasSecret, maskSecrets } from '@plastic/core/secrets.ts'
 import {
   copyHistory, crossWorkspaceNote, gateRecords, locateCopy,
   type CrossWorkspaceRejection, type GovernanceContext, type OtherWorkspaceMark,
 } from './workspace-gate.ts'
-import { scopeKey, type Scope } from '../scope.ts'
+import { scopeKey, type Scope } from '@plastic/core/scope.ts'
 
 /** memory_forget 工具的依赖，纯逻辑层与框架绑定层共用。 */
 export interface ForgetToolDeps {

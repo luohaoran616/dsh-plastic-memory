@@ -1,6 +1,6 @@
-import type { MemoryRecord } from '../record-schema.ts'
-import { extractEntities } from '../text.ts'
-import { maskSecrets, maskSecretSurface } from '../secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { extractEntities } from '@plastic/core/text.ts'
+import { maskSecrets, maskSecretSurface } from '@plastic/core/secrets.ts'
 import { isAbort, type SemanticLlm } from './semantic-scan.ts'
 
 /** 跨项目重复主题：多个 workspace 各自记了同一件事而 global 缺位——"该全局"的行为证据。 */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { bigramSegmenter, createTokenizer, type CjkSegmenter } from '../src/search/tokenizer.ts'
+import { bigramSegmenter, createTokenizer, type CjkSegmenter } from '@plastic/core/search/tokenizer.ts'
 
 const tokenize = createTokenizer()
 
@@ -66,7 +66,7 @@ describe('检索分词器：可注入 CJK 切分器', () => {
 
 describe('检索分词器：叶子模块', () => {
   it('只 import 类型或 Node 内置：不碰插件入口、不读配置', () => {
-    const source = readFileSync(new URL('../src/search/tokenizer.ts', import.meta.url), 'utf8')
+    const source = readFileSync(new URL('../packages/core/src/search/tokenizer.ts', import.meta.url), 'utf8')
     const imports = [...source.matchAll(/^\s*import\s+(type\s+)?[^'"]*?['"]([^'"]+)['"]/gm)]
     const offending = imports
       .filter(([, typeOnly, spec]) => typeOnly === undefined && !spec!.startsWith('node:'))

@@ -3,9 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { exportMemories } from '../scripts/export-kv-memories.ts'
-import { FileTable } from '../src/storage/file-table.ts'
-import type { RecallStats } from '../src/storage/schema.ts'
-import { isPendingDelegated, type MemoryRecord } from '../src/record-schema.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import type { RecallStats } from '@plastic/core/storage/schema.ts'
+import { isPendingDelegated, type MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { InMemoryKvTable } from './helpers/in-memory-kv.ts'
 
@@ -166,9 +166,9 @@ it('可选键在场时无损往返（validFrom/validTo 走本机时间、整分�
 
 it('目标目录已有其他 id 的同名文件时不覆盖：改走 id 兜底名；两个名都被占则 skipped', async () => {
   // 模拟"硬约束②被违反"：新系统已写过一条同 slug、不同 id 的记录
-  const { encodeRecord } = await import('../src/storage/frontmatter.ts')
+  const { encodeRecord } = await import('@plastic/core/storage/frontmatter.ts')
   const { mkdir, writeFile, readFile } = await import('node:fs/promises')
-  const { memoryRecordSchema } = await import('../src/record-schema.ts')
+  const { memoryRecordSchema } = await import('@plastic/core/record-schema.ts')
   const existing = memoryRecordSchema.parse(makeRecord('mem_new_sys', '同名记录'))
   await mkdir(join(root, 'global'), { recursive: true })
   await writeFile(join(root, 'global', '同名记录.md'), encodeRecord(existing, {}), 'utf8')

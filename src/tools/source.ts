@@ -1,7 +1,7 @@
-import type { MemoryStore } from '../store.ts'
-import type { MemoryRecord } from '../record-schema.ts'
-import type { SourceRejectCode } from '../contract-codes.ts'
-import { maskSecretSurface } from '../secrets.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import type { SourceRejectCode } from '@plastic/core/contract-codes.ts'
+import { maskSecretSurface } from '@plastic/core/secrets.ts'
 
 /** ctx.sessionQuery.readEvent 的最小契约（2026-08-28 真机探针核实） */
 export interface ReadEventFn {

@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import type { loadBaselineInstructions } from '@deepseek-ai/dsh-agent-instructions'
-import type { MemoryRecord } from '../record-schema.ts'
-import { scopeKey, type Scope } from '../scope.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { scopeKey, type Scope } from '@plastic/core/scope.ts'
 
 /**
  * 指令文件（AGENTS.md / CLAUDE.md）按作用域现读：一个项目的指令文件 = 在它的 workspacePath 开新会话时模型读到的那段，

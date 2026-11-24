@@ -6,9 +6,9 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ARCHIVE_DIR, GLOBAL_DIR } from '../src/storage/paths.ts'
-import { FileTable } from '../src/storage/file-table.ts'
-import type { RecallStats } from '../src/storage/schema.ts'
+import { ARCHIVE_DIR, GLOBAL_DIR } from '@plastic/core/storage/paths.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import type { RecallStats } from '@plastic/core/storage/schema.ts'
 import { InMemoryKvTable } from './helpers/in-memory-kv.ts'
 
 // 测试第 5 层：两个真实 Node 进程同时写同一个记忆目录（rename 只覆盖同一记录自己的文件，

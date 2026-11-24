@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { splitFrontmatter, decodeRecord, encodeRecord } from '../src/storage/frontmatter.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import { splitFrontmatter, decodeRecord, encodeRecord } from '@plastic/core/storage/frontmatter.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record as baseRecord } from './helpers/record.ts'
-import { FrontmatterError } from '../src/errors.ts'
+import { FrontmatterError } from '@plastic/core/errors.ts'
 import { captureError } from './helpers/errors.ts'
-import { maskDiagnostic } from '../src/secrets.ts'
+import { maskDiagnostic } from '@plastic/core/secrets.ts'
 
 // 本文件默认造那条"包管理用 pnpm"的 global preference（编解码/去重断言的固定样本）。
 const record = (partial: Partial<MemoryRecord> = {}) => baseRecord({

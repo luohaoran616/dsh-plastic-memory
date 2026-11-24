@@ -1,14 +1,14 @@
 import { basename, dirname, join, relative } from 'node:path'
-import type { MemoryRecord } from '../../src/record-schema.ts'
-import { RecordNotFoundError } from '../../src/errors.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { RecordNotFoundError } from '@plastic/core/errors.ts'
 import {
   byPosition, pickLiveFirst, isScopeTarget, scopesOf,
   type MemoryTable, type LocatedFile, type LocateTarget, type ScopeReadOptions, type ScopeReadResult,
   type WorkspaceDirListing, type DirectoryNote,
-} from '../../src/storage/table.ts'
-import { ARCHIVE_DIR, GLOBAL_DIR, deriveFileId, isReservedFileName, slugifyName, workspaceDirName } from '../../src/storage/paths.ts'
-import { RETENTION_MS } from '../../src/retention.ts'
-import type { Scope } from '../../src/scope.ts'
+} from '@plastic/core/storage/table.ts'
+import { ARCHIVE_DIR, GLOBAL_DIR, deriveFileId, isReservedFileName, slugifyName, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { RETENTION_MS } from '@plastic/core/retention.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 
 /** 双后端套件往虚拟目录放文件用的记录：缺 id 时按相对路径派生（对应 FileTable 读手建文件）。 */
 export type SeedRecord = Omit<MemoryRecord, 'id'> & { id?: string }

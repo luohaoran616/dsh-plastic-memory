@@ -1,14 +1,14 @@
-import type { MemoryStore } from '../store.ts'
-import type { AgentsMdWriter } from '../storage/agents-md.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
+import type { AgentsMdWriter } from '@plastic/core/storage/agents-md.ts'
 import { editFingerprint, type SnapshotStore } from '../governance/snapshots.ts'
-import { isPendingDelegated, type MemoryRecord } from '../record-schema.ts'
+import { isPendingDelegated, type MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { MemorySnapshot } from '../governance/schema.ts'
-import { hasSecret } from '../secrets.ts'
+import { hasSecret } from '@plastic/core/secrets.ts'
 import {
   crossWorkspaceNote, gateRecords, locateCopy,
   type CrossWorkspaceRejection, type GovernanceContext, type OtherWorkspaceMark,
 } from './workspace-gate.ts'
-import type { Scope } from '../scope.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 
 export type PromoteTarget = 'global' | 'agents-md'
 

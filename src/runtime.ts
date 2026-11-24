@@ -1,15 +1,15 @@
 import { realpath } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { MemoryLogger, MemoryStore } from './store.ts'
-import type { MemoryRecord } from './record-schema.ts'
-import { resolveLiveFirst } from './storage/table.ts'
-import { memoryRelativePath } from './storage/paths.ts'
+import type { MemoryLogger, MemoryStore } from '@plastic/core/store.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { resolveLiveFirst } from '@plastic/core/storage/table.ts'
+import { memoryRelativePath } from '@plastic/core/storage/paths.ts'
 import type { TypeRegistry } from './type-registry.ts'
 import type { EvidenceLookupLevel } from './evidence-guidance.ts'
 import { assembleSnapshot, overflowLevel, type OverflowMode, type SnapshotUsage } from './snapshot.ts'
-import type { OverflowLevel } from './contract-codes.ts'
+import type { OverflowLevel } from '@plastic/core/contract-codes.ts'
 import { relaxedCap, type SessionView, type SnapshotOrigin } from './gui/contract.ts'
-import { ledgerLabel, scopeOfLedger, type Scope } from './scope.ts'
+import { ledgerLabel, scopeOfLedger, type Scope } from '@plastic/core/scope.ts'
 
 /**
  * 快照的预读：global + 当前 workspace 顶层的 active 记录（同 id 按取舍规则留一份，口径同 queryScope 的默认查询），

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { executeConfirm, type ConfirmToolDeps } from '../src/tools/confirm.ts'
-import { MemoryStore } from '../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { PendingDecisionsStore } from '../src/governance/decisions.ts'
 import { SnapshotStore } from '../src/governance/snapshots.ts'
 import type { MemorySnapshot, PendingDecision } from '../src/governance/schema.ts'

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildSemanticPrompt, parseSemanticFindings, runSemanticScan, planSemanticBatches, reportedTokens, semanticMemoryLine, SEMANTIC_BATCH_TOKEN_BUDGET } from '../src/governance/semantic-scan.ts'
 import { estimateTokens } from '../src/snapshot.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { FAKE_SECRET } from './helpers/secrets.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
 
 describe('buildSemanticPrompt', () => {
   it('user 部分含每条记忆的 id/content，有基线时包含基线内容', () => {

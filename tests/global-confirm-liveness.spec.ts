@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
 import { runSavePipeline, type PipelineResult } from '../src/pipeline.ts'
-import { MemoryStore } from '../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { buildTypeRegistry } from '../src/type-registry.ts'
 import { SnapshotStore } from '../src/governance/snapshots.ts'
 import type { MemorySnapshot } from '../src/governance/schema.ts'

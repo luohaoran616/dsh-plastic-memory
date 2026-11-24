@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { breakStaleLock, isStaleLock } from '../src/storage/state-files.ts'
+import { breakStaleLock, isStaleLock } from '@plastic/core/storage/state-files.ts'
 
 // .state/ 锁文件的残留判定与清理：真实临时目录，时间由参数给定，不依赖真实时钟。
 // 持有者用本进程的 pid，保证「进程还活着」这一前提确定成立。

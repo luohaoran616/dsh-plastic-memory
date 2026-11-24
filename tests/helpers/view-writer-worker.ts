@@ -12,10 +12,10 @@
  * 日志写 stderr。stdin 关闭后进程自然退出。
  */
 import { createInterface } from 'node:readline'
-import { FileTable } from '../../src/storage/file-table.ts'
-import { SidecarStore } from '../../src/storage/sidecar.ts'
-import { createRootLock } from '../../src/storage/root-lock.ts'
-import { MemoryStore } from '../../src/store.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { buildTypeRegistry } from '../../src/type-registry.ts'
 import { PendingDecisionsStore } from '../../src/governance/decisions.ts'
 import { memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema, adviceIgnoreSchema } from '../../src/governance/schema.ts'

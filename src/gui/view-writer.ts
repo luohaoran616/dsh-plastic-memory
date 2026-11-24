@@ -1,9 +1,9 @@
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { MemoryStore, MemoryLogger } from '../store.ts'
-import type { KvTable } from '../kv-table.ts'
-import type { RootLock } from '../root-lock.ts'
-import { byPosition, type LocatedRecord } from '../storage/table.ts'
+import type { MemoryStore, MemoryLogger } from '@plastic/core/store.ts'
+import type { KvTable } from '@plastic/core/kv-table.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
+import { byPosition, type LocatedRecord } from '@plastic/core/storage/table.ts'
 import type { TypeRegistry } from '../type-registry.ts'
 import type { PendingDecisionsStore } from '../governance/decisions.ts'
 import { isModelChange } from '../governance/undo-rules.ts'
@@ -18,7 +18,7 @@ import {
   type CheckupView, type GlobalViewName, type SessionView, type WorkspaceMapView,
 } from './contract.ts'
 import { GLOBAL_VIEW_NAMES, buildCheckupView, buildGlobalViews, type GlobalViews } from './views.ts'
-import { scopeCacheKey, scopeOfLedger, scopeOfMemory, type Scope } from '../scope.ts'
+import { scopeCacheKey, scopeOfLedger, scopeOfMemory, type Scope } from '@plastic/core/scope.ts'
 import { isCopyOf } from '../tools/workspace-gate.ts'
 
 export interface ViewSourceDeps {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { memoryRecordSchema } from '../record-schema.ts'
-import { MODEL_CHANGE_KINDS, PROPOSAL_ACTIONS, PROPOSAL_SOURCES, SUGGESTION_FAILURE_KINDS } from '../contract-codes.ts'
+import { memoryRecordSchema } from '@plastic/core/record-schema.ts'
+import { MODEL_CHANGE_KINDS, PROPOSAL_ACTIONS, PROPOSAL_SOURCES, SUGGESTION_FAILURE_KINDS } from '@plastic/core/contract-codes.ts'
 
 /** 与 mem_ id 同模式（pipeline.ts），不引入 nanoid。 */
 export function genId(prefix: string): string {

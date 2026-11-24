@@ -1,6 +1,6 @@
-import type { MemoryRecord } from '../record-schema.ts'
-import { MODEL_CHANGE_KINDS } from '../contract-codes.ts'
-import { RETENTION_MS } from '../retention.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { MODEL_CHANGE_KINDS } from '@plastic/core/contract-codes.ts'
+import { RETENTION_MS } from '@plastic/core/retention.ts'
 import { kindOf, verdictLoser, type BatchReceipt, type PendingDecision, type PendingKind } from './schema.ts'
 import { editFingerprint } from './snapshots.ts'
 

@@ -8,7 +8,7 @@
  * 写锁的告警写 stderr。stdin 关闭后进程自然退出。
  */
 import { createInterface } from 'node:readline'
-import { createRootLock } from '../../src/storage/root-lock.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
 import { barrierLock } from './lock-barrier.ts'
 
 const [root, signalDir, tag, mode] = process.argv.slice(2)

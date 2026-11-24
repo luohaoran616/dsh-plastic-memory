@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { chmod, readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir, homedir } from 'node:os'
-import { agentsMdPath, createAgentsMdWriter } from '../src/storage/agents-md.ts'
+import { agentsMdPath, createAgentsMdWriter } from '@plastic/core/storage/agents-md.ts'
 
 describe('agentsMdPath', () => {
   afterEach(() => {

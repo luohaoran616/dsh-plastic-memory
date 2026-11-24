@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
-import type { KvTable } from '../kv-table.ts'
-import type { AutoCheckupSetting } from '../storage/schema.ts'
+import type { KvTable } from '@plastic/core/kv-table.ts'
+import type { AutoCheckupSetting } from '@plastic/core/storage/schema.ts'
 import { AUTO_CHECKUP_FOLLOW, checkupKey, type AutoCheckupFrequency, type ScopeOrAll } from '../gui/contract.ts'
 
 /**

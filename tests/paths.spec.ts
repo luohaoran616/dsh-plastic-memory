@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { memoryRelativePath, resolveMemoryRoot, slugifyName, workspaceDirName } from '../src/storage/paths.ts'
+import { memoryRelativePath, resolveMemoryRoot, slugifyName, workspaceDirName } from '@plastic/core/storage/paths.ts'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 

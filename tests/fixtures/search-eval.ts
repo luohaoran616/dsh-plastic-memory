@@ -1,4 +1,4 @@
-import type { MemoryRecord } from '../../src/record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 
 /**
  * memory_search 评估集：合成语料 + 查询 + 预期，回归测试（tests/search-eval.spec.ts）与开发脚本

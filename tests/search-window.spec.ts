@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import { matchWindow } from '../src/search/window.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
+import { matchWindow } from '@plastic/core/search/window.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
 
 // 命中窗口：从一条长记忆里取命中词附近的一段，由完整的行或句子组成。
 // 这里用很小的目标长度和硬上限，让例子一眼能数清；生产取值在检索执行器旁的常量里。

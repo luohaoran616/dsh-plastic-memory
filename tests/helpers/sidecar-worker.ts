@@ -6,10 +6,10 @@
  */
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { SidecarStore } from '../../src/storage/sidecar.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
 import { SnapshotStore } from '../../src/governance/snapshots.ts'
 import { memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema, adviceIgnoreSchema } from '../../src/governance/schema.ts'
-import { MemoryStore } from '../../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { record } from './record.ts'
 import { InMemoryTable } from './in-memory-table.ts'
 

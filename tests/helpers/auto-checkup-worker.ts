@@ -14,9 +14,9 @@
  */
 import { createInterface } from 'node:readline'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { FileTable } from '../../src/storage/file-table.ts'
-import { SidecarStore } from '../../src/storage/sidecar.ts'
-import { MemoryStore } from '../../src/store.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { buildTypeRegistry } from '../../src/type-registry.ts'
 import { PendingDecisionsStore } from '../../src/governance/decisions.ts'
 import { AdviceIgnoreStore } from '../../src/governance/advice-ignores.ts'

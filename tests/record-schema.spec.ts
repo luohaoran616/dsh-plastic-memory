@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memoryRecordSchema, CONFIDENCE_BY_SOURCE, isPendingDelegated } from '../src/record-schema.ts'
+import { memoryRecordSchema, CONFIDENCE_BY_SOURCE, isPendingDelegated } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 
 const valid = {

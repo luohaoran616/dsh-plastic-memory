@@ -1,6 +1,6 @@
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { SEVERITY_BY_TYPE, type Finding } from './schema.ts'
-import { maskDiagnostic, maskSecretSurface, maskSecrets } from '../secrets.ts'
+import { maskDiagnostic, maskSecretSurface, maskSecrets } from '@plastic/core/secrets.ts'
 import { estimateTokens } from '../snapshot.ts'
 
 /** 语义层的 LLM 抽象：纯逻辑只依赖这个接口，真机接线在 index.ts。 */

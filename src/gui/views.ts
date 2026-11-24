@@ -1,10 +1,10 @@
 import { relative, sep } from 'node:path'
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { TypeRegistry } from '../type-registry.ts'
-import type { DirectoryNote, LocatedRecord } from '../storage/table.ts'
-import { RETENTION_MS } from '../retention.ts'
-import { hasCriticalSecret, maskSecretSurface, maskSecrets } from '../secrets.ts'
-import { computeDigest } from '../storage/frontmatter.ts'
+import type { DirectoryNote, LocatedRecord } from '@plastic/core/storage/table.ts'
+import { RETENTION_MS } from '@plastic/core/retention.ts'
+import { hasCriticalSecret, maskSecretSurface, maskSecrets } from '@plastic/core/secrets.ts'
+import { computeDigest } from '@plastic/core/storage/frontmatter.ts'
 import { FINDING_TYPES, kindOf, verdictLoser, type FindingType, type MemorySnapshot, type PendingDecision } from '../governance/schema.ts'
 import { candidateFingerprint, isBasisCurrent, overflowLevelOf, overflowScopeOf } from '../governance/decisions.ts'
 import { asUndoable, isModelChange, undoStateOf } from '../governance/undo-rules.ts'
@@ -14,15 +14,15 @@ import { scoreScope, type ScopePreread } from '../governance/scope-health.ts'
 import type { IgnoredAdvice } from '../governance/advice-ignores.ts'
 import { autoCheckupDue, autoCheckupRetryAt, isRetryLimitReached } from '../governance/auto-checkups.ts'
 import { RULE_PENALTY_TYPES, SEMANTIC_NOISE_TYPES } from '../governance/scoring.ts'
-import type { CheckupRecord } from '../storage/schema.ts'
-import type { ScanNoteCode } from '../contract-codes.ts'
+import type { CheckupRecord } from '@plastic/core/storage/schema.ts'
+import type { ScanNoteCode } from '@plastic/core/contract-codes.ts'
 import {
   ADVICE_TYPES, GUI_VIEW_VERSION, PENDING_ITEM_KINDS, PENDING_LEVEL_OF_KIND, PENDING_LEVELS, SCOPE_KEYS, checkupKey, isAwaitingDecision, resolveAutoCheckup,
   pendingItemKey, pendingItemScopes,
   type AdviceType, type AutoCheckupFrequency, type CheckupAdded, type CheckupCause, type CheckupResult, type CheckupView, type DeletedView, type MemoryPromotion, type GlobalViewName, type HealthView, type LibraryView, type MemoryCard,
   type MemoryCommandResult, type ModelChange, type PendingItem, type PendingView, type SessionView,
 } from './contract.ts'
-import { isInScope, scopeCacheKey, scopeKey, scopeOfLedger, scopeOfMemory, type Scope } from '../scope.ts'
+import { isInScope, scopeCacheKey, scopeKey, scopeOfLedger, scopeOfMemory, type Scope } from '@plastic/core/scope.ts'
 import { isCopyOf } from '../tools/workspace-gate.ts'
 
 /**

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import type { CasKvTable } from '../kv-table.ts'
-import type { MemoryRecord } from '../record-schema.ts'
-import { IGNORABLE_ADVICE_TYPES, type IgnorableAdviceType } from '../contract-codes.ts'
+import type { CasKvTable } from '@plastic/core/kv-table.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { IGNORABLE_ADVICE_TYPES, type IgnorableAdviceType } from '@plastic/core/contract-codes.ts'
 import type { AdviceIgnore, Finding, FindingType } from './schema.ts'
 
 /**

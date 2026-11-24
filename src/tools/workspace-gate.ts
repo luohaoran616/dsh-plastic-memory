@@ -1,8 +1,8 @@
-import type { MemoryRecord } from '../record-schema.ts'
-import type { GovernanceRejectCode } from '../contract-codes.ts'
-import type { LocateOptions, MemoryStore } from '../store.ts'
-import { ledgerLabel, scopeKey, scopeOfMemory, type Scope } from '../scope.ts'
-import { hasSecret } from '../secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import type { GovernanceRejectCode } from '@plastic/core/contract-codes.ts'
+import type { LocateOptions, MemoryStore } from '@plastic/core/store.ts'
+import { ledgerLabel, scopeKey, scopeOfMemory, type Scope } from '@plastic/core/scope.ts'
+import { hasSecret } from '@plastic/core/secrets.ts'
 import { editFingerprint } from '../governance/snapshots.ts'
 
 /** 据定位结果做不可逆决定（脱敏）的地方用：没找到在写锁内确认，见 LocateOptions。 */

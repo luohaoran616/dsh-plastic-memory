@@ -1,16 +1,16 @@
 import type { TypeRegistry } from '../type-registry.ts'
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { pairKey } from './decisions.ts'
 import type { AdviceIgnore, Finding, PendingDecision, ScanCacheEntry } from './schema.ts'
 import { FINDING_TYPES } from './schema.ts'
 import { runRuleScan, buildMalformedFindings } from './rule-scan.ts'
 import { computeHealth, type HealthScore } from './scoring.ts'
 import { adviceFingerprint, applyIgnores, type IgnoredAdvice } from './advice-ignores.ts'
-import type { DirectoryNote, LocatedRecord, QuarantineEntry } from '../storage/table.ts'
-import type { CheckupRecord } from '../storage/schema.ts'
+import type { DirectoryNote, LocatedRecord, QuarantineEntry } from '@plastic/core/storage/table.ts'
+import type { CheckupRecord } from '@plastic/core/storage/schema.ts'
 import { lastCheckupAt } from './checkup-records.ts'
 import { checkupKey } from '../gui/contract.ts'
-import { scopeCacheKey, type Scope } from '../scope.ts'
+import { scopeCacheKey, type Scope } from '@plastic/core/scope.ts'
 
 /** 健康档位的用户面标签（scan 体检行与 health message 共用一份，枚举值仍是 green/amber/red）。 */
 export const TIER_LABEL = { green: '绿色', amber: '黄色', red: '红色' } as const

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { cacheInstructions, createInstructionReader, INSTRUCTION_MAX_BYTES, instructionTexts, type ReadInstructions } from '../src/governance/instructions.ts'
-import type { Scope } from '../src/scope.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 
 // 用宿主自己的指令文件包，在真实临时目录里读：全局层由 DSH_HOME、DSH_AGENTS_HOME 决定，都指到临时目录，不碰真实家目录
 const loadHost = () => import('@deepseek-ai/dsh-agent-instructions')

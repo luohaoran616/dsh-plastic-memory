@@ -4,14 +4,14 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fakeExec } from './helpers/exec.ts'
 import { record } from './helpers/record.ts'
-import { MemoryStore } from '../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { executeSearch, type SearchToolDeps } from '../src/tools/search.ts'
 import { buildTypeRegistry } from '../src/type-registry.ts'
-import { createTokenizer } from '../src/search/tokenizer.ts'
+import { createTokenizer } from '@plastic/core/search/tokenizer.ts'
 import {
   defaultJiebaLoader, resetJieba, tokenizerForQuery,
   type JiebaClass, type JiebaInstance, type JiebaLoader,
-} from '../src/search/jieba-segmenter.ts'
+} from '@plastic/core/search/jieba-segmenter.ts'
 import { InMemoryTable } from './helpers/in-memory-table.ts'
 import { InMemoryBatchKvTable } from './helpers/in-memory-kv.ts'
 

@@ -1,4 +1,4 @@
-import type { BatchKvTable, CasKvTable, ClaimKvTable, RefreshableClaimKvTable } from '../../src/kv-table.ts'
+import type { BatchKvTable, CasKvTable, ClaimKvTable, RefreshableClaimKvTable } from '@plastic/core/kv-table.ts'
 
 /** 内存 KV：侧表与治理各表的测试替身，不进发布包。认领只在本进程内排他。 */
 export class InMemoryKvTable<T> implements ClaimKvTable<T>, CasKvTable<T>, RefreshableClaimKvTable<T> {

@@ -1,6 +1,6 @@
-import type { MemoryTypeDefinition } from './types.ts'
-import { TypeRegistryError } from './errors.ts'
-import { GENERAL_SCENE, SCENE_MAX_TYPES } from './contract-codes.ts'
+import type { MemoryTypeDefinition } from '@plastic/core/types.ts'
+import { TypeRegistryError } from '@plastic/core/errors.ts'
+import { GENERAL_SCENE, SCENE_MAX_TYPES } from '@plastic/core/contract-codes.ts'
 
 /** 场景：从类型池里挑的一组类型（含通用类型），顺序无意义，类型表按类型池顺序排。 */
 export interface SceneConfig {

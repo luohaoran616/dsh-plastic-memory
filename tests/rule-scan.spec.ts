@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildMalformedFindings, runRuleScan, BLOAT_THRESHOLD } from '../src/governance/rule-scan.ts'
-import { detectSecrets, SECRET_MASK } from '../src/secrets.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import { detectSecrets, SECRET_MASK } from '@plastic/core/secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { FAKE_SECRET } from './helpers/secrets.ts'
 

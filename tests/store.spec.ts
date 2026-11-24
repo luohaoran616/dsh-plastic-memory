@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { MemoryStore } from '../src/store.ts'
-import type { RecallStats } from '../src/storage/schema.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
+import type { RecallStats } from '@plastic/core/storage/schema.ts'
 import { record } from './helpers/record.ts'
 import { InMemoryTable } from './helpers/in-memory-table.ts'
 import { InMemoryBatchKvTable } from './helpers/in-memory-kv.ts'

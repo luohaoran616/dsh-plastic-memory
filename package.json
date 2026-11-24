@@ -47,6 +47,7 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "dependencies": {
+    "@plastic/core": "workspace:*",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
@@ -96,7 +97,7 @@
     }
   },
   "scripts": {
-    "build": "rm -rf lib && tsc -p tsconfig.build.json && node scripts/build-client.ts",
+    "build": "pnpm --filter @plastic/core build && rm -rf lib && tsc -p tsconfig.build.json && node scripts/build-client.ts",
     "host:smoke": "bash scripts/host-smoke.sh",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

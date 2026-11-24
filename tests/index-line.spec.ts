@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { formatIndexLine, sourceNote, DELEGATED_PENDING_NOTE, INFERENCE_NOTE } from '../src/index-line.ts'
-import { STALENESS_NOTE } from '../src/record-freshness.ts'
+import { formatIndexLine, sourceNote, DELEGATED_PENDING_NOTE, INFERENCE_NOTE } from '@plastic/core/index-line.ts'
+import { STALENESS_NOTE } from '@plastic/core/record-freshness.ts'
 import { record } from './helpers/record.ts'
 
 // 索引行末尾带文件名，MEMORY.md 与注入同一个格式器。

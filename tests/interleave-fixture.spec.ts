@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import fc from 'fast-check'
-import { atomicWrite, createExclusive } from '../src/storage/state-files.ts'
+import { atomicWrite, createExclusive } from '@plastic/core/storage/state-files.ts'
 import {
   assertSerialEquivalent, diskState, interleaveParams, interleaveRuns, interleaveScheduler, observeConcurrent, scheduleTrace, type Subject,
 } from './helpers/interleave.ts'

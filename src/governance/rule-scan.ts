@@ -1,8 +1,8 @@
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { SEVERITY_BY_TYPE, type Finding } from './schema.ts'
-import { detectSecrets, maskDiagnostic } from '../secrets.ts'
-import { withinValidity } from '../record-freshness.ts'
-import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT, formatValidity } from '../validity.ts'
+import { detectSecrets, maskDiagnostic } from '@plastic/core/secrets.ts'
+import { withinValidity } from '@plastic/core/record-freshness.ts'
+import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT, formatValidity } from '@plastic/core/validity.ts'
 
 export const BLOAT_THRESHOLD = 2000
 

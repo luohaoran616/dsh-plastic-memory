@@ -1,7 +1,7 @@
-import type { MemoryStore } from '../store.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 import type { SnapshotStore, SnapshotDiffEntry } from '../governance/snapshots.ts'
-import type { MemoryRecord } from '../record-schema.ts'
-import { maskSecretSurface } from '../secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { maskSecretSurface } from '@plastic/core/secrets.ts'
 import { crossWorkspaceNote, gateRecords, isVisible, type CrossWorkspaceRejection, type GovernanceContext, type OtherWorkspaceMark } from './workspace-gate.ts'
 
 export interface SnapshotToolDeps {

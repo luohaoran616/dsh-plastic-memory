@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isInScope, ledgerLabel, sameScope, scopeAt, scopeCacheKey, scopeKey, scopeOfLedger, scopeOfMemory, type Scope } from '../src/scope.ts'
+import { isInScope, ledgerLabel, sameScope, scopeAt, scopeCacheKey, scopeKey, scopeOfLedger, scopeOfMemory, type Scope } from '@plastic/core/scope.ts'
 import { checkupKey } from '../src/gui/contract.ts'
 
 // 作用域的身份：判等、从记录推作用域、归属、标准键、组合键、账本标签。

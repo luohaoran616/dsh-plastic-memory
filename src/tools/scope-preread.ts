@@ -1,15 +1,15 @@
-import type { MemoryStore } from '../store.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 import type { PendingDecisionsStore } from '../governance/decisions.ts'
-import type { KvTable } from '../kv-table.ts'
+import type { KvTable } from '@plastic/core/kv-table.ts'
 import { kindOf, type ScanCacheEntry } from '../governance/schema.ts'
 import type { AdviceIgnoreStore } from '../governance/advice-ignores.ts'
 import type { CheckupRecordStore } from '../governance/checkup-records.ts'
 import type { ScopePreread } from '../governance/scope-health.ts'
-import { scopeCacheKey, type Scope } from '../scope.ts'
-import type { MemoryRecord } from '../record-schema.ts'
+import { scopeCacheKey, type Scope } from '@plastic/core/scope.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { dirname, join } from 'node:path'
-import { SECRET_MASK, exposedPath, maskSecrets } from '../secrets.ts'
-import { resolveDuplicates, resolveLiveFirst, type DirectoryNote, type LocatedRecord, type QuarantineEntry, type WorkspaceDirListing } from '../storage/table.ts'
+import { SECRET_MASK, exposedPath, maskSecrets } from '@plastic/core/secrets.ts'
+import { resolveDuplicates, resolveLiveFirst, type DirectoryNote, type LocatedRecord, type QuarantineEntry, type WorkspaceDirListing } from '@plastic/core/storage/table.ts'
 
 /**
  * memory_health 与 memory_scan 共用的预读：两个工具从同一个函数取评分输入，对同一作用域永远同分。

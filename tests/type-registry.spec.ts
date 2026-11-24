@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { assertNoBuiltinCollision, buildTypeRegistry, BUILTIN_TYPES, PRESET_SCENES, PRESET_TYPES, RETIRED_TYPES } from '../src/type-registry.ts'
-import { GENERAL_SCENE, SCENE_MAX_TYPES } from '../src/contract-codes.ts'
-import { TypeRegistryError } from '../src/errors.ts'
+import { GENERAL_SCENE, SCENE_MAX_TYPES } from '@plastic/core/contract-codes.ts'
+import { TypeRegistryError } from '@plastic/core/errors.ts'
 import { captureError } from './helpers/errors.ts'
 
 const base = { template: 'coding' as const, customTypes: {} }

@@ -1,5 +1,5 @@
 import type { InstructionFiles, ReadInstructions } from '../../src/governance/instructions.ts'
-import { scopeKey } from '../../src/scope.ts'
+import { scopeKey } from '@plastic/core/scope.ts'
 
 /**
  * 测试用的取指令文件（读磁盘的那一层换成固定内容）：按作用域键（全局 `global`、项目为路径）给渲染好的文本，

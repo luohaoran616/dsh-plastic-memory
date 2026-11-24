@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { stalenessNote, withinValidity } from '../src/record-freshness.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import { stalenessNote, withinValidity } from '@plastic/core/record-freshness.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { NOW as T0, DAY } from './helpers/clock.ts'
 
 // 全部使用固定时间戳（无 Date.now()）。DAY = 一天的毫秒数。

@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto'
-import type { CasKvTable, ClaimKvTable } from '../kv-table.ts'
-import type { RootLock } from '../root-lock.ts'
-import type { MemoryRecord } from '../record-schema.ts'
-import type { OverflowLevel } from '../contract-codes.ts'
+import type { CasKvTable, ClaimKvTable } from '@plastic/core/kv-table.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import type { OverflowLevel } from '@plastic/core/contract-codes.ts'
 import {
   genId, kindOf, verdictLoser, type BatchReceipt, type PendingDecision, type PendingKind, type SettledProposal, type SettledVerdict, type StoredSuggestion,
   type SuggestionBasis, type SuggestionFailure,
 } from './schema.ts'
 import { isUndoExpired } from './undo-rules.ts'
 import { editFingerprint } from './snapshots.ts'
-import { scopeAt, scopeKey } from '../scope.ts'
+import { scopeAt, scopeKey } from '@plastic/core/scope.ts'
 
 /** 去重 key：memoryIds 排序拼接 + baselineRef（垂直冲突与横向冲突互不干扰）。 */
 export function dedupKey(memoryIds: string[], baselineRef?: string): string {

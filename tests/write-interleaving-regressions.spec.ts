@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { GLOBAL_DIR, workspaceDirName } from '../src/storage/paths.ts'
+import { GLOBAL_DIR, workspaceDirName } from '@plastic/core/storage/paths.ts'
 import { executeSnapshotTool } from '../src/tools/snapshot.ts'
-import { scopeKey } from '../src/scope.ts'
+import { scopeKey } from '@plastic/core/scope.ts'
 import { assertSerialEquivalent, observeConcurrent, observeSerial, phasedScheduler, scheduleTrace } from './helpers/interleave.ts'
 import { IDS, W, memorySubject, secretProblems, type MemOp, type Seed } from './helpers/memory-subject.ts'
 

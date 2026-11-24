@@ -10,9 +10,9 @@
  * stdin 关闭后退出，退出码 0。
  */
 import { createInterface } from 'node:readline'
-import { FileTable } from '../../src/storage/file-table.ts'
-import { SidecarStore } from '../../src/storage/sidecar.ts'
-import { MemoryStore } from '../../src/store.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { SnapshotStore } from '../../src/governance/snapshots.ts'
 import { PendingDecisionsStore } from '../../src/governance/decisions.ts'
 import { memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema, adviceIgnoreSchema } from '../../src/governance/schema.ts'

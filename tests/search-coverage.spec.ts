@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createTokenizer } from '../src/search/tokenizer.ts'
+import { createTokenizer } from '@plastic/core/search/tokenizer.ts'
 import {
   KEYWORD_MAX_CJK_CHARS, contentSegments, groupQueryTerms, judgeTopHit, matchedTerms, termHitCounts, type TermGroup,
-} from '../src/search/coverage.ts'
+} from '@plastic/core/search/coverage.ts'
 
 // 「命中弱」按首条覆盖度判断：查询切成词（CJK 去掉虚词后的内容段），覆盖的内容不到一半才算弱；
 // 整组没出现的关键词另外列出，不单独决定判弱。

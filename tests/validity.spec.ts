@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { formatValidity, parseValidityInput, roundValidity } from '../src/validity.ts'
+import { formatValidity, parseValidityInput, roundValidity } from '@plastic/core/validity.ts'
 
 // 有效期按本机时区解释与展示。期望值用 new Date(年, 月, 日, 时, 分) 在同一时区里算，结果与机器时区无关；
 // 「不是 UTC」的那几条单独固定到东八区，免得在 UTC 机器上恒真。

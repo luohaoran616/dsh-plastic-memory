@@ -1,4 +1,4 @@
-import type { RootLock } from '../../src/root-lock.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import { signal, waitForSignal } from './signal-files.ts'
 
 export interface BarrierOptions {

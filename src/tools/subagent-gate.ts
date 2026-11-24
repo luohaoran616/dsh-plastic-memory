@@ -1,6 +1,6 @@
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { ToolGateCode } from '../contract-codes.ts'
+import type { ToolGateCode } from '@plastic/core/contract-codes.ts'
 import type { SaveDelegation } from '../pipeline.ts'
 
 /**

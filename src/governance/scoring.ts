@@ -1,5 +1,5 @@
 import { FINDING_TYPES, type Finding, type FindingType } from './schema.ts'
-import type { Scope } from '../scope.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 
 /** 红线触发时 score 的红区上限：密钥存在即不可接受，gate 判死而非扣分算术（高分不能稀释它）。 */
 export const SECRET_GATE_SCORE_CAP = 40

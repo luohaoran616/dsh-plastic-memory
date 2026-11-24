@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { MemoryRecord } from '../record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { SemanticLlm } from '../governance/semantic-scan.ts'
 import type { MemoryDraft, ModelEditAdviceType, PlanNote } from './contract.ts'
 

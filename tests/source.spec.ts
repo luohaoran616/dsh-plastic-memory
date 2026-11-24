@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { executeSource, renderSourceResult, extractEventText, type ReadEventFn } from '../src/tools/source.ts'
-import { MemoryStore } from '../src/store.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record as baseRecord } from './helpers/record.ts'
 import { FAKE_SECRET } from './helpers/secrets.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
 import { InMemoryTable } from './helpers/in-memory-table.ts'
 import { InMemoryBatchKvTable } from './helpers/in-memory-kv.ts'
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ReadEventFn } from '../src/tools/source.ts'
 import { readSuggestionSources } from '../src/gui/suggestion-source.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { FAKE_SECRET } from './helpers/secrets.ts'
 

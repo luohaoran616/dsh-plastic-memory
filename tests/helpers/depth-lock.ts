@@ -1,4 +1,4 @@
-import type { RootLock } from '../../src/root-lock.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { SemanticLlm } from '../../src/governance/semantic-scan.ts'
 
 /**

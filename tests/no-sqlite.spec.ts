@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createRootLock } from '../src/storage/root-lock.ts'
-import { STATE_DIR } from '../src/storage/paths.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
+import { STATE_DIR } from '@plastic/core/storage/paths.ts'
 
 // 只在 node-no-sqlite 项目里跑（见 vitest.config.ts）：核对这一档的写锁确实退回了进程内保护，
 // 否则同一批用例在这一档全绿也说明不了什么。

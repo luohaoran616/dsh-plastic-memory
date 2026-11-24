@@ -29,9 +29,9 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
-import { memoryRecordSchema } from '../src/record-schema.ts'
-import { encodeRecord } from '../src/storage/frontmatter.ts'
-import { GLOBAL_DIR, WORKSPACE_MARKER, workspaceDirName, slugifyName, resolveMemoryRoot, isReservedFileName } from '../src/storage/paths.ts'
+import { memoryRecordSchema } from '@plastic/core/record-schema.ts'
+import { encodeRecord } from '@plastic/core/storage/frontmatter.ts'
+import { GLOBAL_DIR, WORKSPACE_MARKER, workspaceDirName, slugifyName, resolveMemoryRoot, isReservedFileName } from '@plastic/core/storage/paths.ts'
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)

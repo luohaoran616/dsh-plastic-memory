@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { MemoryRecord } from '../record-schema.ts'
-import type { CasKvTable } from '../kv-table.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import type { CasKvTable } from '@plastic/core/kv-table.ts'
 import { REDACTED_PLACEHOLDER, genId, type MemorySnapshot, type SnapshotRecord } from './schema.ts'
-import { RETENTION_MS } from '../retention.ts'
-import { maskSecrets, secretFields } from '../secrets.ts'
-import { roundValidity } from '../validity.ts'
-import { scopeAt } from '../scope.ts'
-import type { MemoryStore } from '../store.ts'
+import { RETENTION_MS } from '@plastic/core/retention.ts'
+import { maskSecrets, secretFields } from '@plastic/core/secrets.ts'
+import { roundValidity } from '@plastic/core/validity.ts'
+import { scopeAt } from '@plastic/core/scope.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 
 /** 保留窗口：与软删清扫共用 retention.ts 的单一来源（两者必须一致）。 */
 export const SNAPSHOT_RETENTION_MS = RETENTION_MS

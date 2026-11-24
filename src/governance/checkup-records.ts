@@ -1,8 +1,8 @@
 import { isAbsolute } from 'node:path'
-import type { CasKvTable, RefreshableClaim, RefreshableClaimKvTable } from '../kv-table.ts'
-import type { CheckupCompletion, CheckupRecord } from '../storage/schema.ts'
+import type { CasKvTable, RefreshableClaim, RefreshableClaimKvTable } from '@plastic/core/kv-table.ts'
+import type { CheckupCompletion, CheckupRecord } from '@plastic/core/storage/schema.ts'
 import type { ScanCacheEntry } from './schema.ts'
-import type { Scope } from '../scope.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 import { checkupKey, type CheckupCause, type CheckupResult } from '../gui/contract.ts'
 
 /**

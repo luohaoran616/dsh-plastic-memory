@@ -1,6 +1,6 @@
-import type { MemoryRecord } from '../record-schema.ts'
-import { GLOBAL_SCOPE_KEY, scopeKey, scopeOfMemory } from '../scope.ts'
-import { maskSecrets } from '../secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import { GLOBAL_SCOPE_KEY, scopeKey, scopeOfMemory } from '@plastic/core/scope.ts'
+import { maskSecrets } from '@plastic/core/secrets.ts'
 import { sourceWindow, type RawEvent, type ReadEventFn } from '../tools/source.ts'
 
 /**

@@ -1,4 +1,4 @@
-import type { MemoryRecord } from '../../src/record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { nextId } from './ids.ts'
 
 /**

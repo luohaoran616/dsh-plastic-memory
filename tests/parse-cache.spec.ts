@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
-import { ParseCache, type FileSignature } from '../src/storage/parse-cache.ts'
-import type { FileLocation } from '../src/storage/frontmatter.ts'
+import { ParseCache, type FileSignature } from '@plastic/core/storage/parse-cache.ts'
+import type { FileLocation } from '@plastic/core/storage/frontmatter.ts'
 
 const DIR = '/root/global'
 const PATH = join(DIR, 'a.md')

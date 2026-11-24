@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SnapshotStore, SNAPSHOT_RETENTION_MS } from '../src/governance/snapshots.ts'
 import { memorySnapshotSchema, type MemorySnapshot } from '../src/governance/schema.ts'
-import { isPendingDelegated, type MemoryRecord } from '../src/record-schema.ts'
+import { isPendingDelegated, type MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { InMemoryBatchKvTable, InMemoryKvTable } from './helpers/in-memory-kv.ts'
 import { InMemoryTable } from './helpers/in-memory-table.ts'
-import { MemoryStore } from '../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 
 function makeStore() {
   return new SnapshotStore(new InMemoryKvTable<MemorySnapshot>())

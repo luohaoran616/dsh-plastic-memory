@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectSecrets, maskSecrets, maskSecretSurface, SECRET_MASK, hasSecret, secretFields } from '../src/secrets.ts'
+import { detectSecrets, maskSecrets, maskSecretSurface, SECRET_MASK, hasSecret, secretFields } from '@plastic/core/secrets.ts'
 import { FAKE_SECRET, generatePrivateKeyPem } from './helpers/secrets.ts'
 
 describe('maskSecrets：只换命中片段', () => {

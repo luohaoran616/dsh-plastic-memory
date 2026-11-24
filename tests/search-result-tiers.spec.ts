@@ -11,11 +11,11 @@ import {
 import { createSearchTool } from '../src/tools/search-tool.ts'
 import { countSearchHits } from '../client/chat/tool-summary.ts'
 import { SnapshotCache } from '../src/runtime.ts'
-import { MemoryStore } from '../src/store.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { buildTypeRegistry } from '../src/type-registry.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
-import type { RecallStats } from '../src/storage/schema.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
+import type { RecallStats } from '@plastic/core/storage/schema.ts'
 
 // 检索结果分级：前几条保底全文，单条很长或全文总量到了预算之后给节选；节选条目头行标字数，开头多一段说明。
 

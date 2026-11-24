@@ -1,19 +1,19 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { applyEdits, type SaveEdit } from './edits.ts'
-import type { MemoryRecord, SourceMode } from './record-schema.ts'
-import type { CodedNote, RejectCode, WarningCode } from './contract-codes.ts'
-import { ALREADY_REVIEWED_REASON, CONFIDENCE_BY_SOURCE, NOT_DELEGATED_REASON, isPendingDelegated, memoryRecordSchema } from './record-schema.ts'
-import type { MemoryStore } from './store.ts'
+import { applyEdits, type SaveEdit } from '@plastic/core/edits.ts'
+import type { MemoryRecord, SourceMode } from '@plastic/core/record-schema.ts'
+import type { CodedNote, RejectCode, WarningCode } from '@plastic/core/contract-codes.ts'
+import { ALREADY_REVIEWED_REASON, CONFIDENCE_BY_SOURCE, NOT_DELEGATED_REASON, isPendingDelegated, memoryRecordSchema } from '@plastic/core/record-schema.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 import type { TypeRegistry } from './type-registry.ts'
 import type { PendingDecisionsStore } from './governance/decisions.ts'
 import type { SnapshotStore } from './governance/snapshots.ts'
-import { detectSecrets, maskSecretSurface } from './secrets.ts'
-import { RecordNotFoundError } from './errors.ts'
-import { extractEntities, textSimilarity, DUPLICATE_SIMILARITY_THRESHOLD } from './text.ts'
+import { detectSecrets, maskSecretSurface } from '@plastic/core/secrets.ts'
+import { RecordNotFoundError } from '@plastic/core/errors.ts'
+import { extractEntities, textSimilarity, DUPLICATE_SIMILARITY_THRESHOLD } from '@plastic/core/text.ts'
 import { toToolOutput } from './output.ts'
-import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT, formatValidity, parseValidityInput, roundValidity } from './validity.ts'
-import { ledgerLabel, scopeOfMemory } from './scope.ts'
+import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT, formatValidity, parseValidityInput, roundValidity } from '@plastic/core/validity.ts'
+import { ledgerLabel, scopeOfMemory } from '@plastic/core/scope.ts'
 
 export interface SaveCandidate {
   action: 'create' | 'update'
@@ -35,7 +35,7 @@ export interface SaveCandidate {
   confirmGlobal?: string
 }
 
-export type { SaveEdit } from './edits.ts'
+export type { SaveEdit } from '@plastic/core/edits.ts'
 
 /** 整条写入才必填的字段：精确修改（edits）时都可省，省掉的沿用目标记忆的。 */
 type WholeWriteKey = 'name' | 'type' | 'scope' | 'content' | 'summary' | 'tags'

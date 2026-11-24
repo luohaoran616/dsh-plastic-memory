@@ -3,7 +3,7 @@ import {
   pendingDecisionSchema, memorySnapshotSchema, scanCacheSchema,
   type PendingDecision, type MemorySnapshot, type ScanCacheEntry,
 } from './governance/schema.ts'
-import { recallStatsSchema, type RecallStats } from './storage/schema.ts'
+import { recallStatsSchema, type RecallStats } from '@plastic/core/storage/schema.ts'
 import type { z } from 'zod'
 
 /** 宿主的 `domainTable` 参数类型绑定宿主自带的 zod 小版本（0.2.2-rc.1 是 4.4，rc.3 起是 4.6），

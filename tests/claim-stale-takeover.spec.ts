@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SidecarStore } from '../src/storage/sidecar.ts'
-import { createRootLock } from '../src/storage/root-lock.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
 import { memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema, adviceIgnoreSchema } from '../src/governance/schema.ts'
-import type { RootLock } from '../src/root-lock.ts'
-import type { RefreshableClaim } from '../src/kv-table.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
+import type { RefreshableClaim } from '@plastic/core/kv-table.ts'
 
 // 清残留认领与持有者刷新交错：真侧表、真写锁、真临时目录。清残留先把认领改名挪开再核对，
 // 改名留下的空档只能在进程边界（node:fs/promises 的 rename）插进去，其余照原实现走。

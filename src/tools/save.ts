@@ -1,10 +1,10 @@
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type { MemoryStore } from '../store.ts'
+import type { MemoryStore } from '@plastic/core/store.ts'
 import type { TypeRegistry } from '../type-registry.ts'
 import type { SnapshotStore } from '../governance/snapshots.ts'
 import type { PendingDecisionsStore } from '../governance/decisions.ts'
-import { isPendingDelegated, type MemoryRecord } from '../record-schema.ts'
-import { maskSecretSurface } from '../secrets.ts'
+import { isPendingDelegated, type MemoryRecord } from '@plastic/core/record-schema.ts'
+import { maskSecretSurface } from '@plastic/core/secrets.ts'
 import { runSavePipeline, type PipelineResult, type SaveDelegation, type SaveInput } from '../pipeline.ts'
 
 /** memory_save 运行时需要的会话上下文，由宿主会话适配器的 saveContextOf 提供。 */

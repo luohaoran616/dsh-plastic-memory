@@ -13,17 +13,17 @@
  * stdin 关闭后进程自然退出。
  */
 import { createInterface } from 'node:readline'
-import { FileTable } from '../../src/storage/file-table.ts'
-import { SidecarStore } from '../../src/storage/sidecar.ts'
-import { createRootLock } from '../../src/storage/root-lock.ts'
-import { MemoryStore } from '../../src/store.ts'
+import { FileTable } from '@plastic/core/storage/file-table.ts'
+import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
+import { MemoryStore } from '@plastic/core/store.ts'
 import { SnapshotStore } from '../../src/governance/snapshots.ts'
 import { PendingDecisionsStore } from '../../src/governance/decisions.ts'
 import { memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema, adviceIgnoreSchema } from '../../src/governance/schema.ts'
 import { executeConfirm } from '../../src/tools/confirm.ts'
 import { goneCopies } from '../../src/tools/workspace-gate.ts'
-import { RecordNotFoundError } from '../../src/errors.ts'
-import type { RootLock } from '../../src/root-lock.ts'
+import { RecordNotFoundError } from '@plastic/core/errors.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import { barrierLock } from './lock-barrier.ts'
 import { noInstructions } from './instructions.ts'
 

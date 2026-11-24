@@ -1,15 +1,15 @@
-import type { MemoryLogger, MemoryStore } from '../store.ts'
+import type { MemoryLogger, MemoryStore } from '@plastic/core/store.ts'
 import { conflictFingerprint, isBaselineCurrent, isBasisCurrent, type PendingDecisionsStore } from '../governance/decisions.ts'
 import { baselineFor, type ReadInstructions } from '../governance/instructions.ts'
 import { kindOf, verdictLoser, type PendingDecision, type SettledProposal, type SuggestionBasis } from '../governance/schema.ts'
 import { editFingerprint, type SnapshotStore } from '../governance/snapshots.ts'
-import { ALREADY_REVIEWED_REASON, NOT_DELEGATED_REASON, isPendingDelegated, type MemoryRecord } from '../record-schema.ts'
-import { verdictOfAction, type AcceptRejectCode, type DecisionRejectCode, type GovernanceRejectCode, type ProposalAction } from '../contract-codes.ts'
-import { RecordNotFoundError } from '../errors.ts'
+import { ALREADY_REVIEWED_REASON, NOT_DELEGATED_REASON, isPendingDelegated, type MemoryRecord } from '@plastic/core/record-schema.ts'
+import { verdictOfAction, type AcceptRejectCode, type DecisionRejectCode, type GovernanceRejectCode, type ProposalAction } from '@plastic/core/contract-codes.ts'
+import { RecordNotFoundError } from '@plastic/core/errors.ts'
 import { crossWorkspaceNote, gateRecords, locateCopy, type CrossWorkspaceRejection, type GovernanceContext, type OtherWorkspaceMark } from './workspace-gate.ts'
-import type { Scope } from '../scope.ts'
+import type { Scope } from '@plastic/core/scope.ts'
 import { executeForget } from './forget.ts'
-import { hasCriticalSecret } from '../secrets.ts'
+import { hasCriticalSecret } from '@plastic/core/secrets.ts'
 
 export interface ConfirmToolDeps {
   store: MemoryStore

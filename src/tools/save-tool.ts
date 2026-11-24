@@ -3,7 +3,7 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { SUBAGENT_MAX_SAVES_DEFAULT, type PipelineResult } from '../pipeline.ts'
 import { executeSave, renderSaveResult, type SaveToolDeps } from './save.ts'
 import { toToolOutput } from './output.ts'
-import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT } from '../validity.ts'
+import { VALIDITY_DATE_FORMAT, VALIDITY_FORMAT } from '@plastic/core/validity.ts'
 
 /** 整条写入才必填的字段共用的说明：参数表里都是可选，必填项由管线按 action 校验。 */
 const WHOLE_WRITE = 'create 和整条 update 必填；用 edits 时不传就保留原值。'

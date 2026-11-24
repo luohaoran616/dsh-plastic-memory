@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { findEntityDuplicates, buildCrossWsPrompt, parseCrossWsResult, runCrossWsScan, CROSS_WS_LIMIT } from '../src/governance/cross-ws.ts'
-import type { MemoryRecord } from '../src/record-schema.ts'
+import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import { record as baseRecord } from './helpers/record.ts'
 import { FAKE_SECRET } from './helpers/secrets.ts'
-import { SECRET_MASK } from '../src/secrets.ts'
+import { SECRET_MASK } from '@plastic/core/secrets.ts'
 
 // 本文件默认造 workspace 层记忆。
 const record = (partial: Partial<MemoryRecord> = {}) => baseRecord({ scope: 'workspace', ...partial })
