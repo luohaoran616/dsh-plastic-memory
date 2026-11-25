@@ -1,0 +1,69 @@
+/**
+ * 副本来源：`client/ui/theme.ts`（仓库根下同一路径），复制于 2026-11-25。
+ * 为什么复制：它所在的组件树经 `useGateway` / `host.ts` 连进 DSH 宿主通道（借会话、订阅 `<memoryRoot>/.state/gui/*.json` 视图文件、
+ * 执行 `/memory` 命令），独立 WebUI 走 REST、没有宿主，只能借样子与语义（Task 6 context §1 的裁决与判定标准）。
+ * 与上游的差异：无改动。 上游改动不会自动同步到这里，改上游对应文件时一并看这份副本。
+ */
+/**
+ * 主题令牌（DESIGN.md「The Borrowed Palette Rule」）：颜色一律 `--pm-*`，指向宿主 `--dsw-alias-*`；
+ * 银藤三档是唯一的颜色字面量。暗色跟 `body[data-ds-dark-theme]`，借来的令牌宿主已经换好，只需换银藤。
+ * 宿主 10 款皮肤都通过覆盖 `--dsw-alias-*` 生效，这里自动跟随。
+ * 大肥鱼主题色（`data-pm-accent='blue-whale'`）把这三档换成宿主品牌蓝：亮暗由宿主令牌自己换，选择器带上暗色那条以压过银藤暗色。
+ */
+export const themeCss = `
+.pm-root {
+  --pm-text: var(--dsw-alias-label-primary);
+  --pm-text-2: var(--dsw-alias-label-secondary);
+  --pm-text-3: var(--dsw-alias-label-tertiary);
+  --pm-caption: var(--dsw-alias-label-caption);
+  --pm-bg: var(--dsw-alias-bg-layer-1);
+  --pm-bg-page: var(--dsw-alias-bg-base);
+  --pm-bg-raised: var(--dsw-alias-bg-layer-3);
+  --pm-bg-block: var(--dsw-alias-bg-module-platform);
+  --pm-line: var(--dsw-alias-border-l2);
+  --pm-line-card: var(--dsw-alias-border-l3);
+  --pm-line-input: var(--dsw-alias-border-l4);
+  --pm-line-selected: var(--dsw-static-neutral-bluish-400);
+  --pm-line-soft: color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
+  --pm-hover: var(--dsw-alias-interactive-bg-hover);
+  --pm-pressed: var(--dsw-alias-interactive-bg-active);
+  --pm-track: var(--dsw-alias-interactive-bg-hover);
+  --pm-warn: var(--dsw-alias-state-warn-primary);
+  --pm-error: var(--dsw-alias-state-error-primary);
+  --pm-success: var(--dsw-alias-state-success-primary);
+  --pm-focus: var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  --pm-on-error: var(--dsw-static-neutral-bluish-00);
+  --pm-accent: #887FA8;
+  --pm-accent-tint: #F2F0F9;
+  --pm-accent-soft: #BFB9D4;
+  color: var(--pm-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+body[data-ds-dark-theme] .pm-root {
+  --pm-accent: #B0A8CB;
+  --pm-accent-tint: #27252C;
+  --pm-accent-soft: #645F77;
+}
+.pm-root[data-pm-accent='blue-whale'],
+body[data-ds-dark-theme] .pm-root[data-pm-accent='blue-whale'] {
+  --pm-accent: var(--dsw-alias-state-business-primary);
+  --pm-accent-tint: var(--dsw-alias-state-business-tertiary);
+  --pm-accent-soft: color-mix(in srgb, var(--dsw-alias-state-business-primary) 50%, var(--pm-bg));
+}
+.pm-root *, .pm-root *::before, .pm-root *::after { box-sizing: border-box; }
+.pm-root :is(button, input[type='checkbox'], [role='option'], [tabindex]):focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--pm-focus);
+  outline-offset: 2px;
+}
+.pm-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--pm-text); cursor: pointer; }
+.pm-link:hover { text-decoration: underline; }
+/* 退一步的链接：次文字色、常规字重，悬停换正文色、不加下划线（「取消」「详情」「改前 / 改后」这类） */
+.pm-link--muted { font-weight: 400; color: var(--pm-text-2); }
+.pm-link--muted:hover { color: var(--pm-text); text-decoration: none; }
+.pm-sep { font-style: normal; color: var(--pm-caption); margin: 0 6px; }
+.pm-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+`

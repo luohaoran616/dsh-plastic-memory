@@ -1,0 +1,67 @@
+/**
+ * 副本来源：`client/ui/Button.tsx`（仓库根下同一路径），复制于 2026-11-25。
+ * 为什么复制：它所在的组件树经 `useGateway` / `host.ts` 连进 DSH 宿主通道（借会话、订阅 `<memoryRoot>/.state/gui/*.json` 视图文件、
+ * 执行 `/memory` 命令），独立 WebUI 走 REST、没有宿主，只能借样子与语义（Task 6 context §1 的裁决与判定标准）。
+ * 与上游的差异：无改动。 上游改动不会自动同步到这里，改上游对应文件时一并看这份副本。
+ */
+/**
+ * 按钮（DESIGN.md「Buttons」）：主按钮对齐宿主设置页保存按钮；次按钮白底细描边；淡灰小按钮给设置页类型行的小操作；危险按钮白底红字淡红描边；ghost 无边框、次文字色，给同一行里退后一级的动作（最近删除的「彻底删除…」、建议整理卡的「打开文件」、「撤销」「取消」「放弃」「停止」）；icon 是 24px 见方的纯图标按钮（记忆查看行尾的「打开文件」），样子同 ghost，读屏名称和悬停提示由调用方给 aria-label、title。
+ * `size="sm"` 是列表行尾、窄行里的小号：12px 字、内边距 2px 10px，配次按钮、幽灵、危险按钮用。`unavailable` 给「现在做不了」的动作：不用原生 disabled，
+ * 这样提示文字能悬停看到、读屏也念得出，点击被吞掉。
+ */
+import type { ButtonHTMLAttributes, MouseEvent } from 'react'
+
+export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger' | 'ghost' | 'icon'
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant
+  size?: 'md' | 'sm'
+  /** 动作暂不可用时的原因（例如「先开一个会话」）。 */
+  unavailable?: string | undefined
+}
+
+export function Button({ variant = 'secondary', size = 'md', unavailable, className, onClick, title, ...rest }: ButtonProps) {
+  const blocked = unavailable !== undefined
+  return (
+    <button
+      type="button"
+      {...rest}
+      className={['pm-btn', `pm-btn--${variant}`, size === 'sm' && 'pm-btn--sm', className].filter(Boolean).join(' ')}
+      aria-disabled={blocked || undefined}
+      title={blocked ? unavailable : title}
+      onClick={(event: MouseEvent<HTMLButtonElement>) => { if (!blocked) onClick?.(event) }}
+    />
+  )
+}
+
+export const buttonCss = `
+.pm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0;
+  font: inherit; font-size: 13px; line-height: 1.5; white-space: nowrap;
+  padding: 5px 14px; border-radius: var(--dsw-radius-md, 12px);
+  border: 0.5px solid var(--pm-line-input); background: var(--pm-bg); color: var(--pm-text);
+  cursor: pointer;
+}
+.pm-btn:hover:not(:disabled):not([aria-disabled='true']) { background: var(--pm-hover); }
+/* 开关式按钮按下（如记忆查看的「选择 → 完成」）：底色保持按下态，悬停也不变浅 */
+.pm-btn[aria-pressed='true'], .pm-btn[aria-pressed='true']:hover:not(:disabled):not([aria-disabled='true']) { background: var(--pm-pressed); }
+.pm-btn--primary { border: 1px solid transparent; background: var(--pm-text); color: var(--pm-bg-raised); }
+.pm-btn--primary:hover:not(:disabled):not([aria-disabled='true']) { background: var(--pm-text); }
+.pm-btn--sm { padding: 2px 10px; font-size: 12px; }
+.pm-btn--quiet {
+  height: 24px; padding: 0 8px; font-size: 12px; border: 0;
+  border-radius: var(--dsw-radius-sm, 8px); background: var(--pm-hover); color: var(--pm-text-2);
+}
+.pm-btn--quiet:hover:not(:disabled):not([aria-disabled='true']) { background: var(--pm-pressed); color: var(--pm-text); }
+.pm-btn--danger { color: var(--pm-error); border-color: color-mix(in srgb, var(--pm-error) 35%, transparent); }
+.pm-btn--ghost { border-color: transparent; background: transparent; color: var(--pm-text-2); }
+.pm-btn.pm-btn--icon { width: 24px; height: 24px; padding: 0; border-color: transparent; border-radius: var(--dsw-radius-sm, 8px); background: transparent; color: var(--pm-text-2); }
+.pm-btn--icon:hover:not(:disabled):not([aria-disabled='true']) { color: var(--pm-text); }
+.pm-btn:disabled, .pm-btn[aria-disabled='true'] { opacity: .4; cursor: default; }
+/* 按下：主按钮轻轻一缩（减少动态效果时不缩），其余按钮底色加深 */
+@media (prefers-reduced-motion: no-preference) {
+  .pm-btn--primary { transition: transform 160ms ease-out; }
+  .pm-btn--primary:active:not(:disabled):not([aria-disabled='true']) { transform: scale(0.97); }
+}
+.pm-btn:not(.pm-btn--primary):active:not(:disabled):not([aria-disabled='true']) { background: var(--pm-pressed); }
+`
