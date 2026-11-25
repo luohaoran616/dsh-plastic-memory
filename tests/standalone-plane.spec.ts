@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { encodeRecord } from '@plastic/core/storage/frontmatter.ts'
-import { GLOBAL_DIR } from '@plastic/core/storage/paths.ts'
+import { KV_IMPORT_MARKER } from '@plastic/core/storage/legacy-kv-import.ts'
+import { GLOBAL_DIR, STATE_DIR } from '@plastic/core/storage/paths.ts'
 import type { MemoryLogger } from '@plastic/core/store.ts'
 import {
   deletedViewSchema, libraryViewSchema, memoryCommandResultSchema, workspaceMapViewSchema,
@@ -56,6 +57,8 @@ describe('createGuiPlane', () => {
       expect(library.memoryRoot).toBe(root)
       const workspaces = workspaceMapViewSchema.parse(JSON.parse(readyText(await plane.readView('workspaces'))))
       expect(workspaces.cwds[PROJECT]).toBe(PROJECT)
+      // 探针语义：独立面不写「旧 KV 已结清」的标记，宿主将来还能导入
+      await expect(stat(join(root, STATE_DIR, KV_IMPORT_MARKER))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await plane.dispose()
     }
@@ -153,13 +156,19 @@ describe('createGuiPlane', () => {
     await writeFile(outsideFile, '根外正文')
     await symlink(outsideFile, join(root, 'escape.md'))
     await writeFile(join(root, 'inside.txt'), '根内正文')
+    // 根内的符号链接指向根内另一份：交给 opener 的是解析后的目标，不是链接本身
+    await writeFile(join(root, 'alias-target.txt'), '根内目标')
+    await symlink(join(root, 'alias-target.txt'), join(root, 'alias.md'))
     const plane = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet, open })
     try {
       expect(await plane.openPath(outsideFile, 'open')).toBe(false)
       expect(await plane.openPath(join(root, 'escape.md'), 'reveal')).toBe(false)
       expect(calls).toEqual([])
-      expect(await plane.openPath(join(root, 'inside.txt'), 'reveal')).toBe(true)
-      expect(calls).toEqual([{ path: join(root, 'inside.txt'), action: 'reveal' }])
+      const inside = join(root, 'inside.txt')
+      expect(await plane.openPath(inside, 'reveal')).toBe(true)
+      expect(calls).toEqual([{ path: await realpath(inside), action: 'reveal' }])
+      expect(await plane.openPath(join(root, 'alias.md'), 'open')).toBe(true)
+      expect(calls[calls.length - 1]).toEqual({ path: await realpath(join(root, 'alias-target.txt')), action: 'open' })
     } finally {
       await plane.dispose()
     }

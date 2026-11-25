@@ -31,6 +31,7 @@ export { STANDALONE_SESSION_ID } from './host.ts'
 /** 可读的视图文件：四个全局视图、体检视图、会话归属对照。 */
 export type GuiViewName = 'pending' | 'health' | 'library' | 'deleted' | 'checkups' | 'workspaces'
 
+/** 无宿主装配的参数：记忆根、写死的项目，以及可选的模型、自动体检、打开实现、指令读取、日志与时钟。 */
 export interface GuiPlaneOptions {
   memoryRoot: string
   /** 各端配置里写死的那个项目（PLASTIC_PROJECT）；不带作用域的命令按它定位。 */
@@ -45,6 +46,7 @@ export interface GuiPlaneOptions {
   now?: () => number
 }
 
+/** 无宿主装配的平面：/memory 命令入口、视图文件读取、记忆根内文件的读取与打开、释放。 */
 export interface GuiPlane {
   readonly memoryRoot: string
   readonly project: string
@@ -114,11 +116,14 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
 
   // 记忆根写锁：这个装配实例一把，注入文件表、侧表、待决账本、视图写入器（同实例内按计数嵌套）
   const rootLock = createRootLock({ root: memoryRoot, log })
-  // 侧表（快照、待决账本、扫描缓存、建议忽略、体检记录、自动体检设置）住 <memoryRoot>/.state/；没有旧宿主 KV 可导
+  // 侧表（快照、待决账本、扫描缓存、建议忽略、体检记录、自动体检设置）住 <memoryRoot>/.state/。
+  // 探针：独立面够不着宿主 storageDomain，不写「没有旧 KV」的结清标记，宿主下次再探
   const sidecar = new SidecarStore({
     root: memoryRoot,
     lock: rootLock,
     schemas: { snapshots: memorySnapshotSchema, pending: pendingDecisionSchema, scanCache: scanCacheSchema, adviceIgnores: adviceIgnoreSchema },
+    /** 探针：独立面够不着宿主 storageDomain，不写结清标记，宿主下次再探。 */
+    openLegacyKv: async () => undefined,
     log,
     now,
   })
@@ -245,8 +250,10 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
       return await readText(target, 'utf8').catch(() => undefined)
     },
     openPath: async (path, action) => {
-      if (await resolveInRoot(path) === undefined) return false
-      return await open(path, action)
+      // 交给 opener 的是解析后的目标：校验过的那一份就是被打开的那一份
+      const target = await resolveInRoot(path)
+      if (target === undefined) return false
+      return await open(target, action)
     },
     dispose: async () => {
       if (isDisposed) return
