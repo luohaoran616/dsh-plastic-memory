@@ -521,11 +521,8 @@ body {
 #root { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 /* 面板根（.pm-root--page）自身是页面根的 flex 项，页面里再纵向排：页眉在上，记忆页占满余下。 */
 .webui-root { display: flex; flex-direction: column; }
-.webui-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none;
-  padding: 10px 16px; border-bottom: .5px solid var(--pm-line);
-}
-.webui-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 20px; color: var(--pm-text); }
+/* 页眉只放语言切换：标题由记忆页自己出，这里不再重复一遍。 */
+.webui-head { display: flex; justify-content: flex-end; flex: none; padding: 8px 12px 0; }
 .webui-lang {
   padding: 4px 10px; border: .5px solid var(--pm-line-input); border-radius: var(--dsw-radius-sm);
   background: var(--pm-bg-raised); font: inherit; font-size: 12px; line-height: 18px; color: var(--pm-text-2); cursor: pointer;

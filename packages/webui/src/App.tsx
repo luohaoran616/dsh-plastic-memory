@@ -19,7 +19,6 @@ export function App({ gateway }: { gateway?: MemoryGateway }): JSX.Element {
   return (
     <PanelShell gateway={resolved} t={t} className="pm-root--page webui-root" extraCss={slotCss('page')}>
       <header className="webui-head">
-        <h1 className="webui-title">{t('nav.label')}</h1>
         <button type="button" className="webui-lang" onClick={() => { setLocale(locale === 'zh' ? 'en' : 'zh') }}>
           {t('webui.lang.switch')}
         </button>

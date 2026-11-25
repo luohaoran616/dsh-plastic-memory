@@ -23,11 +23,13 @@ describe('独立页面', () => {
     expect(tabLabels()).toEqual([zh['tab.todo'], zh['tab.library'], zh['tab.deleted']])
   })
 
-  it('页眉标题走词典', () => {
+  it('页眉只放语言切换，不重复记忆页自己的标题', () => {
     render(<App gateway={createFakeGateway()} />)
     const head = document.querySelector('.webui-head')
     expect(head).not.toBeNull()
-    expect(within(head as HTMLElement).getByRole('heading', { name: zh['nav.label'] })).toBeInTheDocument()
+    expect(within(head as HTMLElement).queryAllByRole('heading')).toHaveLength(0)
+    expect(within(head as HTMLElement).getAllByRole('button')).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { name: zh['nav.label'] })).toHaveLength(1)
   })
 
   it('切到英文后页签换成英文', () => {
