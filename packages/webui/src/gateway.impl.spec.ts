@@ -140,7 +140,7 @@ describe('listRecords', () => {
     expect(request?.params.get('q')).toBe('发版')
     expect(request?.params.get('limit')).toBe('20')
     expect(request?.params.get('offset')).toBe('40')
-    expect(request?.params.has('status')).toBe(true)
+    expect(request?.params.get('status')).toBe('deleted')
   })
 
   it('缺省查询不写 scope/status：服务端按可见集合与在用记录取', async () => {

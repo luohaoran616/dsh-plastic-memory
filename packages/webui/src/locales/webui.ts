@@ -5,7 +5,7 @@
  */
 export const webuiZh = {
   'app.title': '记忆治理',
-  'app.subtitle': 'plastic-memory 独立治理界面 · 数据来自本机 REST 服务（/api）',
+  'app.subtitle': 'plastic-memory 独立治理界面 · 数据来自本机 REST 服务（/api）· 本机模式：不支持 serve --token 的鉴权（页面不携带 Authorization 头）',
   'app.loading': '正在读取…',
   'app.reload': '重新读取',
 
@@ -66,6 +66,10 @@ export const webuiZh = {
   'detail.yes': '是',
   'detail.none': '—',
 
+  'status.active': '在用',
+  'status.superseded': '已被替代',
+  'status.deleted': '已删除',
+
   'edit.title': '标题',
   'edit.type': '类型',
   'edit.tags': '标签（逗号分隔）',
@@ -78,6 +82,8 @@ export const webuiZh = {
   'edit.reload': '重新读取最新内容',
   'edit.rebase': '保留我的修改，重新提交',
   'edit.latest': '服务端此刻的版本',
+  'edit.latestTitle': '标题',
+  'edit.latestTags': '标签',
   'edit.required': '标题和正文都不能为空。',
 
   'delete.confirm': '删除这条？',

@@ -11,10 +11,13 @@ import { useT } from '../i18n.tsx'
 import type { GatewayError, HealthSummary } from '../gateway.impl.ts'
 import { LoadError, Notice } from './shared.tsx'
 
-/** 分数分档只决定标记颜色；分数本身由服务端的扣分表算，这里不重算。 */
-function markerOf(score: number): 'ok' | 'pending' | 'error' {
+/**
+ * 分数分档只决定标记颜色；分数本身由服务端的扣分表算，这里不重算。
+ * 档位与插件侧的产品口径一致（`src/governance/scoring.ts`：`>= 80` green、`>= 50` amber、其余 red），别单独调阈值。
+ */
+export function markerOf(score: number): 'ok' | 'pending' | 'error' {
   if (score >= 80) return 'ok'
-  if (score >= 60) return 'pending'
+  if (score >= 50) return 'pending'
   return 'error'
 }
 

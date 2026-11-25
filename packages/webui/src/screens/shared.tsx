@@ -1,10 +1,14 @@
-/** 各个记忆视图共用的界面件：范围选择、搜索框、提示条、翻页、溯源面板、行内编辑器。 */
-import { useEffect, useState, type ReactNode } from 'react'
+/** 各个记忆视图共用的界面件：范围选择、搜索框、提示条、翻页、分组列表体、溯源面板、行内编辑器。 */
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../components/Button.tsx'
+import { MemoryCard } from '../components/MemoryCard.tsx'
 import { formatDayTime, useT, type Translate } from '../i18n.tsx'
 import { useGateway } from '../gateway.tsx'
 import type { GatewayError, RecordView } from '../gateway.impl.ts'
-import { typeLabel } from '../records.ts'
+import type { LocaleKey } from '../locales.ts'
+import { toCard, typeLabel } from '../records.ts'
+import { groupRecords } from './groups.ts'
+import type { RecordsState } from './useRecords.ts'
 
 /** 范围选择：可见集合（全局 + 当前项目）、只看全局、指定项目目录——与 REST 的 `scope` 参数同一套语义。 */
 export type ScopeSelection = { kind: 'visible' } | { kind: 'global' } | { kind: 'project'; path: string }
@@ -137,7 +141,49 @@ export function Pager({ offset, count, limit, hasMore, onOffset }: {
   )
 }
 
-const STATUS_LABEL: Record<string, string> = { active: '在用', superseded: '已被替代', deleted: '已删除' }
+/**
+ * 分组列表的共用主体：错误/加载/空态判定与「分组标题 + 记忆卡行」只在这里维护，
+ * 各屏只给空态变体、行动作与（浏览页才有的）行尾展开块——免得一屏改了加载口径，另一屏静默漂移。
+ */
+export function RecordListBody({ state, empty, renderActions, renderExtra }: {
+  state: Pick<RecordsState, 'status' | 'records' | 'error'>
+  /** 空列表时显示什么（浏览页按是否在搜索换插图，归档页固定一种）。 */
+  empty: ReactNode
+  /** 行右侧的动作按钮。 */
+  renderActions: (record: RecordView) => ReactNode
+  /** 行尾的展开块（浏览页的溯源面板、编辑器、删除确认）。 */
+  renderExtra?: (record: RecordView) => ReactNode
+}) {
+  const t = useT()
+  const bodies: ReactNode[] = []
+  if (state.error !== undefined) bodies.push(<LoadError key="error" error={state.error} />)
+  if (state.status === 'loading' && state.records.length === 0) bodies.push(<p key="loading" className="pm-panel-sub">{t('app.loading')}</p>)
+  if (state.status !== 'loading' && state.error === undefined) {
+    if (state.records.length === 0) {
+      bodies.push(<Fragment key="empty">{empty}</Fragment>)
+    } else {
+      for (const group of groupRecords(state.records, t)) {
+        bodies.push(
+          <section key={group.key} className="pm-section">
+            <p className="pm-panel-sub">{group.path === undefined ? group.label : `${group.label} · ${group.path}`}</p>
+            {group.records.map(record => (
+              <article key={record.id} className="pm-row">
+                <div className="pm-row-head">
+                  <div className="pm-row-body">
+                    <MemoryCard memory={toCard(record)} now={Date.now()} typeLabel={typeLabel(record.type, t)} collapsible />
+                  </div>
+                </div>
+                <div className="pm-row-actions">{renderActions(record)}</div>
+                {renderExtra === undefined ? null : renderExtra(record)}
+              </article>
+            ))}
+          </section>,
+        )
+      }
+    }
+  }
+  return <>{bodies}</>
+}
 
 /** 溯源：REST 单条视图里的完整 frontmatter 与文件路径，编辑前核对版本也看它。 */
 export function RecordDetail({ record, onClose }: { record: RecordView; onClose: () => void }) {
@@ -157,7 +203,7 @@ export function RecordDetail({ record, onClose }: { record: RecordView; onClose:
     [t('detail.created'), formatDayTime(record.createdAt, now, t)],
     [t('detail.updated'), formatDayTime(record.updatedAt, now, t)],
     [t('detail.confirmed'), formatDayTime(record.lastConfirmedAt, now, t)],
-    [t('detail.status'), STATUS_LABEL[record.status] ?? record.status],
+    [t('detail.status'), t(`status.${record.status}` as LocaleKey)],
     [t('detail.validTo'), record.validTo === undefined ? t('detail.none') : formatDayTime(record.validTo, now, t)],
     [t('detail.importedFrom'), record['imported-from'] ?? t('detail.none')],
     [t('detail.promoteReview'), record['needs-promote-review'] === true ? t('detail.yes') : t('detail.none')],
@@ -188,7 +234,7 @@ function splitTags(raw: string): string[] {
 
 /**
  * 行内编辑：整条替换（标题、类型、标签、正文），并发标记取打开时读到的那一份 `updatedAt`。
- * 服务端在锁内按它判过期，过期回 409——这里把 409 说成「没保存、别人先改过」，并把最新内容摊开给用户看，
+ * 服务端在锁内按它判过期，过期回 409——这里把 409 说成「没保存、别人先改过」，并把最新内容（标题、标签、正文）摊开给用户看，
  * 不静默失败、也不覆盖。用户可以选择用最新内容重开，或带着自己的改动按最新版本再提交一次。
  */
 export function RecordEditor({ record, onSaved, onClose }: {
@@ -246,7 +292,7 @@ export function RecordEditor({ record, onSaved, onClose }: {
     setConflictMissing(false)
   }
 
-  /** 保留草稿，只把并发标记换成最新版本——相当于「重新读取后再提交」。 */
+  /** 保留草稿，只把并发标记换成最新版本——相当于「重新读取后再提交」。保存时标题、标签、正文都按草稿提交，所以最新版本面板要先把这些字段摊开。 */
   const rebase = () => {
     if (conflict === undefined) return
     setBaseline(conflict)
@@ -277,6 +323,17 @@ export function RecordEditor({ record, onSaved, onClose }: {
         {conflict === undefined ? null : (
           <>
             <p className="pm-panel-sub">{t('edit.latest')}：{formatDayTime(conflict.updatedAt, Date.now(), t)}</p>
+            {/* 正文之外也摊开标题与标签：点「保留我的修改」保存时，这两项会覆盖掉对方改的内容，用户得先看见。 */}
+            <dl className="pm-grid">
+              <div style={{ display: 'contents' }}>
+                <dt className="pm-grid-term">{t('edit.latestTitle')}</dt>
+                <dd className="pm-grid-desc">{conflict.title}</dd>
+              </div>
+              <div style={{ display: 'contents' }}>
+                <dt className="pm-grid-term">{t('edit.latestTags')}</dt>
+                <dd className="pm-grid-desc">{conflict.tags.length === 0 ? t('detail.none') : conflict.tags.join('、')}</dd>
+              </div>
+            </dl>
             <pre className="pm-prose">{conflict.text}</pre>
           </>
         )}

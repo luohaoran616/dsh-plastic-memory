@@ -10,6 +10,9 @@
  * - 错误一律折成 `GatewayResult`，不抛异常：`409` 单独映射成 `conflict`——
  *   那是「你手上这份已经过期，重新读取再改」，不是失败率统计里的一次错误，界面上要给冲突提示而不是静默失败。
  * - 只搬 JSON，不碰磁盘：所有写路径由服务端交给 core（同一把跨进程写锁）。
+ * - 不带鉴权头：本界面只支持不带令牌的本机模式。`serve --token` 下 `/api` 要 `Authorization: Bearer`，
+ *   而页面没有读令牌的入口（不读 `?token=`、不存 storage），所以 401 的文案直接让用户改回不带 `--token` 的启动方式，
+ *   不留「填个令牌就能用」的假象。要支持 token 模式得先给页面一个令牌入口，属于另一单。
  */
 
 /** core 记录来源档（R11）：界面按它显示「谁说的」。 */
@@ -139,7 +142,7 @@ function mapHttpError(status: number, detail: string | undefined): GatewayError 
   const base = { status, ...(detail === undefined ? {} : { detail }) }
   if (status === 409) return { ...base, kind: 'conflict', message: '这条记录在你打开之后被改过，未保存。请重新读取最新内容后再提交。' }
   if (status === 404) return { ...base, kind: 'not-found', message: '找不到这条记录，可能已经被删除。' }
-  if (status === 401) return { ...base, kind: 'unauthorized', message: '服务要求访问令牌（serve --token），当前请求没有带上。' }
+  if (status === 401) return { ...base, kind: 'unauthorized', message: '服务要求访问令牌（serve --token）。本页面不携带 Authorization 头，token 模式下无法使用；请改用不带 --token 的本机模式启动 serve。' }
   if (status === 400 || status === 413) return { ...base, kind: 'bad-request', message: `服务端拒绝了请求（HTTP ${status}）。` }
   return { ...base, kind: 'http', message: `请求失败（HTTP ${status}）。` }
 }
