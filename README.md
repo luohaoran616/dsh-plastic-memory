@@ -105,6 +105,48 @@ dsh plugin --profile web add dsh-plastic-memory
 | [基本架构和工具](https://github.com/KKL08/dsh-plastic-memory/blob/main/guide/how-it-works.md) | 记忆怎么写入、带入、治理，以及模型能用的九个工具           |
 | 参与贡献                                                                                   | 相关文档完善中                            |
 
+## 跨端接入（MCP Server 与独立界面）
+
+记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库；并自带一个不依赖 DeepSeek Harness 的 Web 管理界面。
+
+### MCP Server
+
+```sh
+# stdio 模式（供客户端配置调用）：五个工具 memory_save / memory_search / memory_read / memory_forget / memory_health
+PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js
+
+# serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、REST 管理面与 WebUI 静态页面
+PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js serve
+```
+
+环境变量：`PLASTIC_MEMORY_ROOT`（记忆根绝对路径，必填）、`PLASTIC_CLIENT`（客户端标识，写入记忆来源）、`PLASTIC_PROJECT`（客户端侧写死的项目映射，`project` 入参缺省时使用）。MCP 端只提供增查删改；体检处理与全局提升审核在 WebUI 完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+
+### 客户端配置示例（ZCode / Antigravity）
+
+```json
+{
+  "command": "node",
+  "args": ["/path/to/dsh-plastic-memory/packages/mcp/lib/bin.js"],
+  "env": {
+    "PLASTIC_MEMORY_ROOT": "/home/me/.dsh/memories",
+    "PLASTIC_CLIENT": "zcode",
+    "PLASTIC_PROJECT": "/home/me/projects/alpha"
+  }
+}
+```
+
+ZCode 加在 `~/.zcode/cli/setting.json` 的 `mcp.servers` 下；Antigravity 加在 `~/.gemini/config/mcp_config.json` 的 `mcpServers` 下。
+
+### 从 ZCode 导入存量记忆
+
+```sh
+# 先 dry-run 看报告（不写入），确认后加 --apply
+node packages/mcp/lib/bin.js import-zcode --src ~/.zcode/cli/memories \
+  --root ~/.dsh/memories --map <项目hash到路径的JSON映射文件> [--apply]
+```
+
+映射文件是 `{"<项目hash目录名>": "<项目绝对路径>"}` 对象；导入幂等，重复执行自动跳过已导入条目。
+
 ## 数据与隐私
 
 - 记忆以本地文件形式存储在你的设备上，默认在 `~/.dsh/memories`。
