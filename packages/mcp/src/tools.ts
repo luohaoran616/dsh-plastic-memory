@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { CONFIDENCE_BY_SOURCE, memoryRecordSchema, type MemoryRecord, type SourceMode } from '@plastic/core/record-schema.ts'
 import { DEFAULT_SEARCH_TOP_K, type MemoryCore, type SearchInput } from '@plastic/core/factory.ts'
-import { byPosition } from '@plastic/core/storage/table.ts'
+import { byPosition, type LocatedFile } from '@plastic/core/storage/table.ts'
 
 /**
  * MCP 工具的实现层（D2 的五个工具）：只做「MCP 入参 → core 调用 → MCP 出参」的映射，
@@ -50,6 +50,27 @@ export interface MemoryReadInput {
 
 /** 完整记录：core 的 schema 字段原样保留（name/content 映射成 D2 的 title/text），另带文件绝对路径。 */
 export type MemoryRecordView = Omit<MemoryRecord, 'name' | 'content'> & { title: string; text: string; path: string }
+
+/** 落盘记录 → 对外视图：MCP 的 memory_read 与 REST 的单条读共用这一份字段映射。 */
+export function recordView(located: LocatedFile): MemoryRecordView {
+  const { name, content, ...rest } = byPosition(located)
+  return { ...rest, title: name, text: content, path: located.filePath }
+}
+
+export interface MemoryWorkspaceOptions {
+  /** 固定项目映射（PLASTIC_PROJECT）；空串/纯空白视为没给，"global" 不是路径。 */
+  project?: string
+  /** 缺省 process.cwd。 */
+  cwd?: () => string
+}
+
+/** project 缺省时的项目目录：PLASTIC_PROJECT（"global" 不是路径，退回 cwd）→ cwd。工具面与 REST 面共用。 */
+export function defaultWorkspacePath(options: MemoryWorkspaceOptions = {}): string {
+  const fixed = requestedProject(options.project)
+  const cwd = options.cwd?.() ?? process.cwd()
+  if (fixed === undefined || fixed === 'global') return resolve(cwd)
+  return isAbsolute(fixed) ? resolve(fixed) : resolve(cwd, fixed)
+}
 
 export interface MemoryForgetInput {
   id: string
@@ -139,10 +160,7 @@ export function createMemoryTools(core: MemoryCore, options: MemoryToolsOptions)
   const absolutize = (value: string): string => (isAbsolute(value) ? resolve(value) : resolve(cwd(), value))
 
   /** project 缺省时的工作目录：PLASTIC_PROJECT（"global" 不是路径，退回 cwd）→ cwd。 */
-  const defaultWorkspace = (): string => {
-    if (fixedProject === undefined || fixedProject === 'global') return resolve(cwd())
-    return absolutize(fixedProject)
-  }
+  const defaultWorkspace = (): string => defaultWorkspacePath({ project: fixedProject, cwd })
 
   /**
    * 写入目标（R12）：project 入参 > PLASTIC_PROJECT > cwd。解析结果恰为 "global" 时不写全局，
@@ -208,8 +226,7 @@ export function createMemoryTools(core: MemoryCore, options: MemoryToolsOptions)
     const located = await core.store.locate(input.id, { workspacePath: defaultWorkspace() })
     if (located === undefined) throw new Error(`找不到记忆：${input.id}`)
     // 位置即作用域：.archive/ 里的文件 status 一律按 deleted 返回
-    const { name, content, ...rest } = byPosition(located)
-    return { ...rest, title: name, text: content, path: located.filePath }
+    return recordView(located)
   }
 
   const forget = async (input: MemoryForgetInput): Promise<MemoryForgetResult> => {

@@ -10,7 +10,7 @@ import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tool
 /**
  * plastic-mcp 的进程入口：缺省 stdio 模式（ZCode、Antigravity 各起一个进程实例，与 DSH 插件同开一个记忆根）。
  * stdout 是 MCP 的 JSON-RPC 通道，所有日志一律走 stderr（core 的缺省 logger 是 console，会写 stdout，必须换掉）。
- * serve 子命令（HTTP + REST + 静态 WebUI）留到后续任务，这里只把子命令分派结构留出来。
+ * `serve` 子命令起 HTTP 模式（/mcp + /api + 静态 WebUI），入口在 serve.ts。
  */
 
 const pkg = createRequire(import.meta.url)('../package.json') as { version: string }
@@ -110,8 +110,13 @@ async function main(argv: string[]): Promise<void> {
       await runImportZcodeCli(argv.slice(1), stderrLog)
       return
     }
-    case 'serve':
-      fail('serve 子命令还没实现（HTTP 模式在后续任务接入），本版本有 stdio 与 import-zcode')
+    case 'serve': {
+      const config = resolveConfig()
+      // 动态加载：stdio 模式不为 HTTP / 静态托管背 node:fs 与 HTTP 路由的依赖
+      const { runServeCli } = await import('./serve.ts')
+      await runServeCli(argv.slice(1), config, stderrLog)
+      return
+    }
     default:
       fail(`未知子命令：${command}（可用：stdio（缺省）、serve、import-zcode）`)
   }
