@@ -9,6 +9,7 @@ import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
 import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { baseEnv, callJson } from './spec-helpers.ts'
 
 // Review Focus #1 / #2 的两个钉子测试：真 node:sqlite 写锁、真临时记忆根、真 plastic-mcp 子进程。
 // 锁协议不在这里重造：两进程用的都是 core 的 <root>/.state/lock/write-lock.sqlite 上的 BEGIN IMMEDIATE。
@@ -16,8 +17,6 @@ import { workspaceDirName } from '@plastic/core/storage/paths.ts'
 const BIN = fileURLToPath(new URL('./bin.ts', import.meta.url))
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const PROJECT = '/proj/concurrent'
-const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<string, string>
-for (const key of ['PLASTIC_MEMORY_ROOT', 'PLASTIC_CLIENT', 'PLASTIC_PROJECT', 'PLASTIC_MCP_TEST_HOLD_LOCK']) delete baseEnv[key]
 
 const silentLog: MemoryLogger = { info() {}, warn() {}, error() {} }
 const WRITES_PER_SIDE = 20
@@ -25,6 +24,8 @@ const WRITES_PER_SIDE = 20
 interface ChildServer {
   client: Client
   transport: StdioClientTransport
+  /** 子进程 stderr 到目前为止的全部内容：锁降级时 core 会在这里打「写锁不可用」。 */
+  stderr: () => string
   /** 子进程被回收（transport 的 close 回调）时 resolve：kill -9 之后据此确认锁已由操作系统释放。 */
   closed: Promise<void>
 }
@@ -41,13 +42,14 @@ async function startChild(env: Record<string, string>): Promise<ChildServer> {
     env: { ...baseEnv, ...env },
     stderr: 'pipe',
   })
-  transport.stderr?.on('data', () => { /* 告警只进 stderr；用例不依赖内容 */ })
+  let stderr = ''
+  transport.stderr?.on('data', (chunk: Buffer | string) => { stderr += String(chunk) })
   const client = new Client({ name: 'plastic-mcp-concurrency-spec', version: '0.0.0' })
   await client.connect(transport)
   let markClosed!: () => void
   const closed = new Promise<void>(resolve => { markClosed = resolve })
   client.onclose = () => markClosed()
-  const child = { client, transport, closed }
+  const child = { client, transport, stderr: () => stderr, closed }
   children.push(child)
   return child
 }
@@ -58,18 +60,8 @@ async function startCore(root: string): Promise<MemoryCore> {
   return core
 }
 
-async function callJson<T>(client: Client, name: string, args: Record<string, unknown>): Promise<T> {
-  // SDK 的 callTool 返回联合类型（普通结果 / task 结果），按普通 CallToolResult 收窄
-  const result = await client.callTool({ name, arguments: args }) as unknown as {
-    content: Array<{ type: string; text?: string }>
-    isError?: boolean
-  }
-  const block = result.content[0]
-  if (result.isError === true || block === undefined || block.type !== 'text' || block.text === undefined) {
-    throw new Error(`${name} 调用失败：${JSON.stringify(result)}`)
-  }
-  return JSON.parse(block.text) as T
-}
+/** 锁降级会让「持锁后被 kill」的用例空过：core 在写锁不可用时只打告警并退回进程内保护。 */
+const LOCK_DEGRADED = '写锁不可用'
 
 /** 跨进程信号文件：一个文件名就是一个一次性事件。等的是条件，不是时长。 */
 async function waitForSignal(dir: string, name: string): Promise<void> {
@@ -138,6 +130,8 @@ describe('跨进程并发与崩溃恢复', () => {
       query: '并发', project: PROJECT, topK: 100,
     })
     expect(searched.hits.map(hit => hit.id).sort()).toEqual([...ids].sort())
+    // 锁降级时这 40 笔也会成功（只是不互斥），必须确认子进程真在用跨进程写锁
+    expect(child.stderr()).not.toContain(LOCK_DEGRADED)
   }, 60_000)
 
   it('子进程持锁时被 kill -9：主实例下一笔写入立即成功（< 1s），无 stale lock 等待', async () => {
@@ -159,6 +153,8 @@ describe('跨进程并发与崩溃恢复', () => {
       title: '持锁记录', text: '锁内等待', project: PROJECT, origin: 'user-stated',
     }).catch((err: unknown) => err)
     await waitForSignal(signals, 'held')
+    // 锁降级时 held 仍会被写、kill 后的写入也会成功（假绿）；先确认子进程确实拿到了跨进程写锁
+    expect(child.stderr()).not.toContain(LOCK_DEGRADED)
 
     const pid = child.transport.pid
     expect(pid).not.toBeNull()

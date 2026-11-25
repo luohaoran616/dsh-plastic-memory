@@ -1,12 +1,9 @@
 #!/usr/bin/env node
-import { access, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { isAbsolute, join } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
+import { isAbsolute } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMemoryCore } from '@plastic/core/factory.ts'
-import { createRootLock } from '@plastic/core/storage/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
 
@@ -65,10 +62,9 @@ function resolveConfig(): EnvConfig {
 async function runStdio(): Promise<void> {
   const config = resolveConfig()
   const core = await createMemoryCore({ root: config.root, client: config.client, log: stderrLog })
-  const tools = withTestHoldLock(createMemoryTools(core, {
+  const tools = await withTestHoldLockIfRequested(createMemoryTools(core, {
     client: config.client,
     ...(config.project === undefined ? {} : { project: config.project }),
-    log: stderrLog,
   }), config.root)
 
   const server = new McpServer({ name: 'plastic-memory', version: pkg.version })
@@ -92,32 +88,14 @@ async function runStdio(): Promise<void> {
 }
 
 /**
- * 测试专用钩子（concurrency.spec 的「持锁崩溃」用例）：设了 PLASTIC_MCP_TEST_HOLD_LOCK=<信号目录> 时，
- * memory_save 落盘成功后，在同一把记忆根写锁内写 `<目录>/held` 并等 `<目录>/go` 才返回。
- * 用例据此在「子进程确实握着 core 那把跨进程写锁」时 kill -9，不靠 sleep 竞态。生产不设这个变量，路径不可达。
+ * 测试专用钩子的接线（concurrency.spec 的「持锁崩溃」用例）：只在 PLASTIC_MCP_TEST_HOLD_LOCK 存在时才动态加载
+ * ./test-hold-lock.ts。正常启动路径不为这个测试装置背 fs/timers/root-lock 的 import。
  */
-function withTestHoldLock(tools: MemoryTools, root: string): MemoryTools {
+async function withTestHoldLockIfRequested(tools: MemoryTools, root: string): Promise<MemoryTools> {
   const dir = process.env.PLASTIC_MCP_TEST_HOLD_LOCK?.trim() ?? ''
   if (dir === '') return tools
-  return {
-    ...tools,
-    save: async (input) => {
-      const result = await tools.save(input)
-      const lock = createRootLock({ root, log: stderrLog })
-      await lock.run(async () => {
-        await writeFile(join(dir, 'held'), '')
-        for (;;) {
-          try {
-            await access(join(dir, 'go'))
-            return
-          } catch {
-            await delay(5)
-          }
-        }
-      })
-      return result
-    },
-  }
+  const { withTestHoldLock } = await import('./test-hold-lock.ts')
+  return withTestHoldLock(tools, { root, dir, log: stderrLog })
 }
 
 async function main(argv: string[]): Promise<void> {

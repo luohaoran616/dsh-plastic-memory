@@ -6,6 +6,6 @@
     "declaration": true
   },
   "include": ["src"],
-  // 用例不进发布产物（与 core 的构建配置同规则）：vitest 的用例与实现同目录
-  "exclude": ["src/**/*.spec.ts"]
+  // 用例与其共用助手不进发布产物（与 core 的构建配置同规则）：vitest 的用例与实现同目录
+  "exclude": ["src/**/*.spec.ts", "src/spec-helpers.ts"]
 }

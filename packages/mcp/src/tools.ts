@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { CONFIDENCE_BY_SOURCE, memoryRecordSchema, type MemoryRecord, type SourceMode } from '@plastic/core/record-schema.ts'
 import { DEFAULT_SEARCH_TOP_K, type MemoryCore, type SearchInput } from '@plastic/core/factory.ts'
-import { byPosition, type MemoryLogger } from '@plastic/core/storage/table.ts'
+import { byPosition } from '@plastic/core/storage/table.ts'
 
 /**
  * MCP 工具的实现层（D2 的五个工具）：只做「MCP 入参 → core 调用 → MCP 出参」的映射，
@@ -79,7 +79,6 @@ export interface MemoryToolsOptions {
   client: string
   /** 固定项目映射（PLASTIC_PROJECT），project 入参缺省时用它；缺省再退回进程 cwd。 */
   project?: string
-  log: MemoryLogger
   /** 缺省 process.cwd：project 与 PLASTIC_PROJECT 都没给时推导 workspacePath。 */
   cwd?: () => string
   now?: () => number
@@ -220,18 +219,23 @@ export function createMemoryTools(core: MemoryCore, options: MemoryToolsOptions)
   }
 
   /**
-   * 只读简版体检（D2）：扫全库（global 与所有项目）统计三类机械问题，不写任何文件。
-   * 口径与 memory_health 的 description 保持一致：malformed 每条例 10 分/上限 30，expired 4/20，orphan 3/15；
+   * 只读简版体检（D2）：扫全库（global 与所有项目，含 .archive/）统计三类机械问题，不写任何文件。
+   * orphan 口径与插件侧治理一致（src/governance/rule-scan.ts）：supersedes 目标「查不到」或「已删」才算孤儿，
+   * 被取代后归档的 superseded 副本不算——不读 .archive/ 会把正常替代链误判成断链。
+   * 扣分口径与 memory_health 的 description 保持一致：malformed 每条例 10 分/上限 30，expired 4/20，orphan 3/15；
    * score = 100 − 扣分合计，夹在 0–100 的整数。
    */
   const health = async (): Promise<MemoryHealthResult> => {
     const stamp = clock()
-    const read = await core.store.readRaw(undefined)
+    const read = await core.store.readRaw(undefined, { includeArchive: true })
     const malformed = read.quarantined
     const active = read.records.filter(located => located.record.status === 'active')
     const expired = active.filter(located => located.record.validTo !== undefined && located.record.validTo <= stamp)
-    const knownIds = new Set(read.records.map(located => located.record.id))
-    const orphans = active.filter(located => (located.record.supersedes ?? []).some(id => !knownIds.has(id)))
+    const statusById = new Map(read.records.map(located => [located.record.id, located.record.status] as const))
+    const orphans = active.filter(located => (located.record.supersedes ?? []).some(id => {
+      const status = statusById.get(id)
+      return status === undefined || status === 'deleted'
+    }))
     const penalty = (count: number, rule: { per: number; cap: number }): number => Math.min(count * rule.per, rule.cap)
     const score = Math.max(0, 100
       - penalty(malformed.length, HEALTH_PENALTY.malformed)
@@ -240,7 +244,7 @@ export function createMemoryTools(core: MemoryCore, options: MemoryToolsOptions)
     const issues = [
       malformed.length > 0 && { penalty: penalty(malformed.length, HEALTH_PENALTY.malformed), text: `${malformed.length} 个文件解析失败进入隔离区：${malformed[0]!.path}` },
       expired.length > 0 && { penalty: penalty(expired.length, HEALTH_PENALTY.expired), text: `${expired.length} 条在用记忆已过期：${expired[0]!.record.id}` },
-      orphans.length > 0 && { penalty: penalty(orphans.length, HEALTH_PENALTY.orphan), text: `${orphans.length} 条记忆的 supersedes 指向不存在的 id：${orphans[0]!.record.id}` },
+      orphans.length > 0 && { penalty: penalty(orphans.length, HEALTH_PENALTY.orphan), text: `${orphans.length} 条记忆的 supersedes 指向不存在或已删除的 id：${orphans[0]!.record.id}` },
     ].filter(issue => issue !== false)
     issues.sort((a, b) => b.penalty - a.penalty)
     return {
@@ -315,10 +319,10 @@ export function registerMemoryTools(server: McpServer, tools: MemoryTools): void
 
   server.registerTool('memory_health', {
     description: [
-      '只读简版体检，不写任何文件。口径：扫全库（global 与所有项目）——',
+      '只读简版体检，不写任何文件。口径：扫全库（global 与所有项目，含 .archive/）——',
       'malformed：frontmatter 解析失败进入隔离区的文件，每个扣 10 分、最多扣 30；',
       'expired：active 但 validTo 已过期的记忆，每个扣 4 分、最多扣 20；',
-      'orphan：supersedes 指向不存在 id 的在用记忆，每个扣 3 分、最多扣 15。',
+      'orphan：supersedes 指向不存在或已删除 id 的在用记忆，每个扣 3 分、最多扣 15（被取代后归档的记录不算）。',
       'score = 100 减去扣分合计，夹在 0–100 的整数；issueCount 是三类问题条数之和；',
       'topIssues 是按类聚合的问题摘要（扣分多的在前，最多 5 条）。完整体检与拍板在 WebUI。',
     ].join(''),

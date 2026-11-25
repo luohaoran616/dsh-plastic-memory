@@ -7,17 +7,15 @@ import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { splitFrontmatter } from '@plastic/core/storage/frontmatter.ts'
-import { GLOBAL_DIR, WORKSPACE_MARKER, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { ARCHIVE_DIR, GLOBAL_DIR, WORKSPACE_MARKER, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { baseEnv, callJson } from './spec-helpers.ts'
+import { deriveSummary, SUMMARY_MAX_CHARS } from './tools.ts'
 
 // 真子进程 + 真 stdio：用例起的是 packages/mcp/src/bin.ts 本身，按 MCP 协议走 StdioClientTransport，
 // 不调内部函数。Node 内置类型剥离直接跑 .ts（与仓库 tests/helpers/spawn-worker.ts 同一办法）。
 
 const BIN = fileURLToPath(new URL('./bin.ts', import.meta.url))
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-
-/** 外层环境只借 HOME/PATH 这类必要变量：PLASTIC_* 一律由用例显式给，避免宿主 shell 的同名变量串进断言。 */
-const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<string, string>
-for (const key of ['PLASTIC_MEMORY_ROOT', 'PLASTIC_CLIENT', 'PLASTIC_PROJECT', 'PLASTIC_MCP_TEST_HOLD_LOCK']) delete baseEnv[key]
 
 interface RunningServer {
   client: Client
@@ -46,20 +44,6 @@ async function startServer(options: { root?: string; cwd?: string; env?: Record<
   const server = { client, root, stderr: () => stderr }
   servers.push(server)
   return server
-}
-
-/** 调一个工具并把第一段文本解析成 JSON；isError 或非文本块直接抛，免得断言在空值上噪声失败。 */
-async function callJson<T>(client: Client, name: string, args: Record<string, unknown> = {}): Promise<T> {
-  // SDK 的 callTool 返回联合类型（普通结果 / task 结果），按普通 CallToolResult 收窄
-  const result = await client.callTool({ name, arguments: args }) as unknown as {
-    content: Array<{ type: string; text?: string }>
-    isError?: boolean
-  }
-  const block = result.content[0]
-  if (result.isError === true || block === undefined || block.type !== 'text' || block.text === undefined) {
-    throw new Error(`${name} 调用失败：${JSON.stringify(result)}`)
-  }
-  return JSON.parse(block.text) as T
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
@@ -281,6 +265,41 @@ describe('MCP 工具面（D2）', () => {
     expect(await treeOf(root)).toEqual(before)
   })
 
+  it('memory_health 的 orphan 口径与插件一致：已归档的 superseded 不算孤儿，已删的才算', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pm-mcp-tools-'))
+    tempDirs.push(root)
+    const globalDir = join(root, GLOBAL_DIR)
+    const archiveDir = join(globalDir, ARCHIVE_DIR)
+    await mkdir(archiveDir, { recursive: true })
+    const common = [
+      'type: knowledge', 'tags: []', 'confidence: 0.9', 'summary: 链条摘要',
+      'createdAt: 2026-01-01T00:00:00.000Z', 'updatedAt: 2026-01-01T00:00:00.000Z', 'lastConfirmedAt: 2026-01-01T00:00:00.000Z',
+    ]
+    // 正常替代链归档后的现场：维护点把被置成 superseded 的旧记录搬进 .archive/，新记录 active 并引用它
+    await writeFile(join(archiveDir, 'chain-old.md'), memoryFile([
+      'id: mem_chain_old', 'name: 被取代的旧记录', ...common, 'status: superseded',
+    ], '旧正文'))
+    await writeFile(join(globalDir, 'chain-new.md'), memoryFile([
+      'id: mem_chain_new', 'name: 替代后的新记录', ...common, 'status: active', 'supersedes:', '  - mem_chain_old',
+    ], '新正文'))
+    // 对照组：引用一条已软删（归档且 status: deleted）的记录，仍算孤儿
+    await writeFile(join(archiveDir, 'gone.md'), memoryFile([
+      'id: mem_chain_gone', 'name: 已删除记录', ...common, 'status: deleted', 'deletedAt: 2026-01-03T00:00:00.000Z',
+    ], '已删正文'))
+    await writeFile(join(globalDir, 'refs-deleted.md'), memoryFile([
+      'id: mem_chain_ref_deleted', 'name: 引用已删记录', ...common, 'status: active', 'supersedes:', '  - mem_chain_gone',
+    ], '引用正文'))
+
+    const server = await startServer({ root })
+    const health = await callJson<{ score: number; issueCount: number; topIssues: string[] }>(server.client, 'memory_health')
+    // 只有「引用已删记录」那一条扣 3 分；替代链上的归档 superseded 不算孤儿
+    expect(health).toMatchObject({ score: 97, issueCount: 1 })
+    expect(health.topIssues).toHaveLength(1)
+    expect(health.topIssues[0]).toContain('supersedes')
+    expect(health.topIssues[0]).toContain('mem_chain_ref_deleted')
+    expect(health.topIssues.join('\n')).not.toContain('mem_chain_new')
+  })
+
   it('缺 PLASTIC_MEMORY_ROOT 或给相对路径：启动即退出并报错，stdout 不产出协议内容', async () => {
     const missing = await runBin({ PLASTIC_CLIENT: 'zcode' })
     expect(missing.code).toBe(1)
@@ -308,5 +327,28 @@ describe('MCP 工具面（D2）', () => {
     expect(saved.path.startsWith(`${dir}${sep}`)).toBe(true)
     await waitFor(() => server.stderr().includes('[plastic-memory]'))
     expect(server.stderr()).toContain('标记指向别的路径')
+  })
+})
+
+describe('deriveSummary 边界', () => {
+  it('首行非空取首行；首行为空时折空白取全文', () => {
+    expect(deriveSummary('  首行摘要  \n第二行细节')).toBe('首行摘要')
+    expect(deriveSummary('\n\n  第一段\n\t第二段  ')).toBe('第一段 第二段')
+  })
+
+  it('超过 120 字符截断并加省略号，按 code point 计不切坏 emoji', () => {
+    const exact = '字'.repeat(SUMMARY_MAX_CHARS)
+    expect(deriveSummary(exact)).toBe(exact)
+
+    const truncated = deriveSummary('字'.repeat(SUMMARY_MAX_CHARS + 5))
+    expect([...truncated]).toHaveLength(SUMMARY_MAX_CHARS + 1)
+    expect(truncated.endsWith('…')).toBe(true)
+    expect(truncated.slice(0, -1)).toBe('字'.repeat(SUMMARY_MAX_CHARS))
+
+    const emoji = deriveSummary('😀'.repeat(SUMMARY_MAX_CHARS + 1))
+    expect([...emoji]).toHaveLength(SUMMARY_MAX_CHARS + 1)
+    expect(emoji.endsWith('…')).toBe(true)
+    // 保留的是 120 个完整 emoji，没有切出半个代理对
+    expect([...emoji.slice(0, -1)].every(char => char === '😀')).toBe(true)
   })
 })

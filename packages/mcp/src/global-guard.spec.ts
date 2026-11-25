@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { splitFrontmatter } from '@plastic/core/storage/frontmatter.ts'
 import { GLOBAL_DIR, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { baseEnv, callJson } from './spec-helpers.ts'
 
 // Review Focus #5 的钉子测试：MCP 端禁止全局直写。
 // project: "global" 只能落成「workspace 作用域 + needs-promote-review: true」，任何人确认后才由 WebUI 提升；
@@ -14,8 +15,6 @@ import { GLOBAL_DIR, workspaceDirName } from '@plastic/core/storage/paths.ts'
 
 const BIN = fileURLToPath(new URL('./bin.ts', import.meta.url))
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<string, string>
-for (const key of ['PLASTIC_MEMORY_ROOT', 'PLASTIC_CLIENT', 'PLASTIC_PROJECT', 'PLASTIC_MCP_TEST_HOLD_LOCK']) delete baseEnv[key]
 
 interface RunningServer { client: Client; root: string }
 
@@ -38,19 +37,6 @@ async function startServer(env: Record<string, string> = {}): Promise<RunningSer
   const server = { client, root }
   servers.push(server)
   return server
-}
-
-async function callJson<T>(client: Client, name: string, args: Record<string, unknown> = {}): Promise<T> {
-  // SDK 的 callTool 返回联合类型（普通结果 / task 结果），按普通 CallToolResult 收窄
-  const result = await client.callTool({ name, arguments: args }) as unknown as {
-    content: Array<{ type: string; text?: string }>
-    isError?: boolean
-  }
-  const block = result.content[0]
-  if (result.isError === true || block === undefined || block.type !== 'text' || block.text === undefined) {
-    throw new Error(`${name} 调用失败：${JSON.stringify(result)}`)
-  }
-  return JSON.parse(block.text) as T
 }
 
 /** 读落盘文件里的 frontmatter 键值：守卫要看的是写进文件的标记，不只是内存里的返回。 */
