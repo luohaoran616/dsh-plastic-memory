@@ -107,7 +107,7 @@ dsh plugin --profile web add dsh-plastic-memory
 
 ## 跨端接入（MCP Server 与独立界面）
 
-记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库；并自带一个不依赖 DeepSeek Harness 的 Web 管理界面。
+记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库；并自带一个不依赖 DeepSeek Harness 的 Web 面板，用的是插件里那版原版记忆页。
 
 ### MCP Server
 
@@ -115,11 +115,30 @@ dsh plugin --profile web add dsh-plastic-memory
 # stdio 模式（供客户端配置调用）：五个工具 memory_save / memory_search / memory_read / memory_forget / memory_health
 PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js
 
-# serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、REST 管理面与 WebUI 静态页面
-PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js serve
+# serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、页面接口与 Web 面板的静态页面
+PLASTIC_MEMORY_ROOT=~/.dsh/memories PLASTIC_PROJECT=/home/me/projects/alpha \
+  node packages/mcp/lib/bin.js serve
 ```
 
-环境变量：`PLASTIC_MEMORY_ROOT`（记忆根绝对路径，必填）、`PLASTIC_CLIENT`（客户端标识，写入记忆来源）、`PLASTIC_PROJECT`（客户端侧写死的项目映射，`project` 入参缺省时使用）。MCP 端只提供增查删改；体检处理与全局提升审核在 WebUI 完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+环境变量：`PLASTIC_MEMORY_ROOT`（记忆根绝对路径，必填）、`PLASTIC_CLIENT`（客户端标识，写入记忆来源）、`PLASTIC_PROJECT`（客户端侧写死的项目映射，`project` 入参缺省时使用）。serve 模式要求 `PLASTIC_PROJECT` 必填且是绝对路径，缺了服务启动即退出。MCP 端只提供增查删改。体检处理与全局提升审核在 Web 面板完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+
+### Web 面板
+
+7788 端口上的独立页面用的是 DeepSeek Harness 插件里那版原版记忆页，项目分组、健康分、待处理角标、冲突卡片、改写建议、原文对照与最近删除都在。界面源码只有一份，放在仓库根目录的 `client/` 里，DSH 插件与独立页面从同一批文件打包，改界面不会出现两边不一样的情况。原版页面依赖的宿主能力由独立服务补齐。`/memory` 命令的无宿主装配在根包的 `src/standalone/` 里。页面的数据经 `/api/gui/` 下的四个接口供给。体检打分与改写建议走下面说的模型线路。
+
+启动独立页面前先按顺序构建三处产物。根包要先构建，因为 `packages/mcp` 的编译读根包产出的类型声明。
+
+```sh
+pnpm build                          # 根包，产出 lib/ 与 lib/standalone/
+pnpm --filter @plastic/mcp build    # MCP 服务与页面接口
+pnpm --filter @plastic/webui build  # 页面产物，落在 packages/webui/dist
+```
+
+模型线路由四个环境变量决定。`PLASTIC_LLM_BASE_URL` 填 Anthropic Messages 格式的地址，例如 `http://127.0.0.1:3091/api/anthropic`。`PLASTIC_LLM_MODEL` 填模型名。`PLASTIC_LLM_API_KEY` 可选，填了才带 `x-api-key` 头。`PLASTIC_LLM_MAX_TOKENS` 可选，缺省 4096。地址与模型名必须同时给，只给一个时服务启动即报错。两者都不给时服务没有模型，体检与改写建议按各自的既有路径记下没有模型这一原因，浏览与手工治理照常可用。
+
+自动体检缺省不跑。独立服务是常驻的，没人盯着的时候后台体检会白花模型额度，所以只有设 `PLASTIC_AUTO_CHECKUP=1` 才启动调度器，启动日志里写明开或关。体检视图里的自动体检设置照常可读可写。
+
+独立页面不带 `--token` 运行。页面没有输入口令的地方，网关也不发送 Authorization 头，服务只绑定本机回环地址是唯一的防线。
 
 ### 客户端配置示例（ZCode / Antigravity）
 
