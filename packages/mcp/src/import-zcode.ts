@@ -15,7 +15,7 @@ import { deriveSummary, newMemoryId } from './tools.ts'
  * 所以只借 core 的 `splitFrontmatter` 做「切围栏 + YAML 解析 + 取正文」，字段自己取，不喂 `decodeRecord`。
  *
  * 幂等键（D7）：目标库里已存在同名且 `imported-from` 以 zcode 开头的记录就跳过。映射文件（JSON：
- * hash 目录名 → 项目绝对路径）可缺省；缺省或未列出的项目按 global 作用域导入，报告里标注。
+ * hash 目录名 → 项目绝对路径，读入时经 `resolve` 规范化）可缺省；缺省或未列出的项目按 global 作用域导入，报告里标注。
  */
 
 /** D7 的已知值映射表：ZCode 的 `metadata.type` → plastic 的类型名。`user` 与 `feedback` 都是用户对做法/分工的要求，
@@ -174,6 +174,7 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
     const existingTitles = await importedTitles(core)
     const entries: ZcodeImportEntry[] = []
     const plannedTitles = new Set<string>()
+    const duplicateTitles: string[] = []
     const unknownTypes = new Map<string | null, string[]>()
     const summary: ZcodeImportSummary = {
       projects: projects.length,
@@ -231,6 +232,7 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
           continue
         }
         if (plannedTitles.has(memory.title)) {
+          duplicateTitles.push(memory.title)
           skip(entry, 'duplicate-in-source')
           continue
         }
@@ -265,7 +267,7 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
       }
     }
 
-    const report = buildReport({ mode: apply ? 'apply' : 'dry-run', src, root, mapFile, projectMap, projects, summary, unknownTypes, entries })
+    const report = buildReport({ mode: apply ? 'apply' : 'dry-run', src, root, mapFile, projectMap, projects, summary, unknownTypes, duplicateTitles, entries })
     if (reportFile !== undefined) {
       await mkdir(dirname(reportFile), { recursive: true })
       await writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, 'utf8')
@@ -389,7 +391,9 @@ async function loadMapFile(file: string): Promise<Record<string, string>> {
       throw new Error(`映射文件里 ${hash} 的值必须是项目绝对路径：${JSON.stringify(value)}`)
     }
     if (!isAbsolute(value)) throw new Error(`映射文件里 ${hash} 的项目路径必须是绝对路径：${value}`)
-    map[hash] = value
+    // core 的工作区目录名与 .workspace 标记都按字符串原样哈希/比对，所以这里先收成规范形式：
+    // 尾部斜杠、`..` 段等写法与别的写入路径（MCP 工具会 resolve）落到同一个工作区目录。
+    map[hash] = resolve(value)
   }
   return map
 }
@@ -403,6 +407,7 @@ function buildReport(input: {
   projects: ProjectScan[]
   summary: ZcodeImportSummary
   unknownTypes: Map<string | null, string[]>
+  duplicateTitles: string[]
   entries: ZcodeImportEntry[]
 }): ZcodeImportReport {
   const projects: ZcodeImportProject[] = input.projects.map(project => {
@@ -422,6 +427,9 @@ function buildReport(input: {
   const warnings = [
     ...unknownTypes.map(({ zcodeType, titles }) =>
       `未知类型 ${zcodeType ?? '(缺 type)'} 没有已知映射，按 ${UNKNOWN_ZCODE_TYPE} 导入（${titles.length} 条）：${titles.join('、')}`),
+    ...(input.duplicateTitles.length === 0 ? [] : [
+      `源内同名被跳过（${input.duplicateTitles.length} 条，同名文件已有一份进入本轮计划/已导入）：${input.duplicateTitles.join('、')}`,
+    ]),
     ...projects.filter(project => project.files > 0 && project.scope === 'global')
       .map(project => `项目 ${project.hash} 未在映射文件中，按 global 处理（${project.files} 条）`),
   ]

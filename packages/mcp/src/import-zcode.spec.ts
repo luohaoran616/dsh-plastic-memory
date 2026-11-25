@@ -5,10 +5,12 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMemoryCore } from '@plastic/core/factory.ts'
-import type { MemoryRecord } from '@plastic/core/record-schema.ts'
-import type { MemoryLogger } from '@plastic/core/storage/table.ts'
+import { memoryRecordSchema, type MemoryRecord } from '@plastic/core/record-schema.ts'
+import { WORKSPACE_MARKER, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import type { LocatedRecord, MemoryLogger } from '@plastic/core/storage/table.ts'
 import { importZcode, parseImportZcodeArgs, type ZcodeImportReport } from './import-zcode.ts'
 import { baseEnv } from './spec-helpers.ts'
+import { createMemoryTools } from './tools.ts'
 
 // 夹具照 Task 4 上下文 §2 的真实格式造：metadata 嵌套 type / originSessionId、description 折行、
 // [[wiki 链接]] 正文、MEMORY.md 索引、未知 type、解析失败的坏文件、跨项目的同名记忆（幂等键碰撞）。
@@ -147,15 +149,54 @@ async function fixture(): Promise<Fixture> {
   return { base, src, root, mapFile, workspaceAlpha }
 }
 
+/** 分支用例的小库：缺 originSessionId、缺 metadata.type 各一条（各钉一个分支，不掺进主夹具的计数）。 */
+async function branchFixture(): Promise<{ src: string; root: string }> {
+  const base = await mkdtemp(join(tmpdir(), 'pm-zcode-branch-'))
+  tempDirs.push(base)
+  const src = join(base, 'zcode-memories')
+  const root = join(base, 'plastic-root')
+  const alphaDir = join(src, 'projects', ALPHA, 'memory')
+  await mkdir(alphaDir, { recursive: true })
+
+  await writeFile(join(alphaDir, 'no-session-note.md'), [
+    '---',
+    'name: no-session-note',
+    'description: 缺 originSessionId 的记忆',
+    'metadata:',
+    '  type: project',
+    '---',
+    '',
+    '没有 originSessionId 也要能导入。',
+    '',
+  ].join('\n'))
+
+  await writeFile(join(alphaDir, 'no-type-note.md'), [
+    '---',
+    'name: no-type-note',
+    'metadata:',
+    '  originSessionId: sess_branch-0002',
+    '---',
+    '',
+    '缺 metadata.type 的记忆归 general。',
+    '',
+  ].join('\n'))
+
+  return { src, root }
+}
+
 /** 读记录走 core 的读路径（与导入器自己的判定同源），不直接扫目录。 */
-async function recordsOf(root: string): Promise<MemoryRecord[]> {
+async function locatedOf(root: string): Promise<LocatedRecord[]> {
   const core = await createMemoryCore({ root, client: 'spec', log: silentLog })
   try {
     const read = await core.store.readRaw(undefined, { includeArchive: true })
-    return read.records.map(located => located.record)
+    return read.records
   } finally {
     await core.close()
   }
+}
+
+async function recordsOf(root: string): Promise<MemoryRecord[]> {
+  return (await locatedOf(root)).map(located => located.record)
 }
 
 /** 记忆根下的文件清单（含 .state）：只读操作前后应逐字相同。 */
@@ -219,6 +260,8 @@ describe('ZCode 记忆导入器', () => {
       { hash: BETA, files: 2, scope: 'global', workspacePath: null, note: '未映射，按 global 处理' },
     ])
     expect(report.warnings.some(warning => warning.includes(BETA) && warning.includes('global'))).toBe(true)
+    // 源内被丢掉的同名条目要出现在 warnings 里，人工过目报告时看得见
+    expect(report.warnings.some(warning => warning.includes('源内同名被跳过') && warning.includes('zcode-hooks-config-gotcha'))).toBe(true)
 
     // 跳过各有原因：beta 的同名文件与 alpha 撞幂等键，no-frontmatter.md 解析失败
     const duplicate = report.entries.find(entry => entry.reason === 'duplicate-in-source')
@@ -278,6 +321,37 @@ describe('ZCode 记忆导入器', () => {
     expect(byName.has('Memory Index')).toBe(false)
   })
 
+  it('映射值经 resolve 规范化：尾部斜杠不另造工作区，与 MCP 工具写入落在同一个目录', async () => {
+    const f = await fixture()
+    const rawMap = join(f.base, 'trailing-slash-map.json')
+    // Tab 补全常产生带尾部斜杠的路径；映射值原样用在 core 里会哈希出另一个工作区目录
+    const rawValue = `${f.workspaceAlpha}/`
+    await writeFile(rawMap, JSON.stringify({ [ALPHA]: rawValue }, null, 2))
+
+    const report = await importZcode({ src: f.src, root: f.root, mapFile: rawMap, apply: true })
+    expect(report.projects.find(project => project.hash === ALPHA)?.workspacePath).toBe(f.workspaceAlpha)
+
+    const before = await locatedOf(f.root)
+    const imported = before.find(located => located.record.name === 'zcode-hooks-config-gotcha')
+    expect(imported?.record.workspacePath).toBe(f.workspaceAlpha)
+    // beta 那两条未映射仍是 global，其余 alpha 记录全部用规范化后的路径
+    expect(before.every(located => located.record.workspacePath === undefined || located.record.workspacePath === f.workspaceAlpha)).toBe(true)
+    expect(imported?.dir).toBe(join(f.root, workspaceDirName(f.workspaceAlpha)))
+    expect((await readFile(join(imported!.dir, WORKSPACE_MARKER), 'utf8')).trim()).toBe(f.workspaceAlpha)
+
+    // 同一路径经 MCP 工具写入（传映射文件里的原值）：工具自己 resolve，落点必须与导入记录同目录
+    const core = await createMemoryCore({ root: f.root, client: 'spec', log: silentLog })
+    try {
+      const tools = createMemoryTools(core, { client: 'spec' })
+      await tools.save({ title: 'mcp-same-workspace', text: '同一项目的另一条记忆', project: rawValue, origin: 'user-stated' })
+    } finally {
+      await core.close()
+    }
+    const mcpSaved = (await locatedOf(f.root)).find(located => located.record.name === 'mcp-same-workspace')
+    expect(mcpSaved?.record.workspacePath).toBe(f.workspaceAlpha)
+    expect(mcpSaved?.dir).toBe(imported?.dir)
+  })
+
   it('同参数二次 apply 零写入：全部按幂等跳过，记忆根逐文件不变', async () => {
     const f = await fixture()
     const first = await importZcode({ src: f.src, root: f.root, mapFile: f.mapFile, apply: true })
@@ -293,6 +367,49 @@ describe('ZCode 记忆导入器', () => {
     expect(second.entries.filter(entry => entry.reason === 'exists')).toHaveLength(6)
     expect(await treeOf(f.root)).toEqual(before)
     expect(await recordsOf(f.root)).toHaveLength(5)
+  })
+
+  it('幂等键按两半判：目标库里的同名手写记录（无 imported-from 前缀）不阻止导入', async () => {
+    const f = await fixture()
+    const seeded = memoryRecordSchema.parse({
+      id: 'mem_manual_same_title',
+      name: 'zcode-hooks-config-gotcha',
+      type: 'knowledge',
+      scope: 'global',
+      tags: [],
+      content: '手写的同名记录，不能因为撞名就被导入逻辑当成已导入。',
+      summary: '手写的同名记录',
+      createdAt: 1, updatedAt: 1, lastConfirmedAt: 1,
+      lastRecalledAt: null, recallCount: 0,
+      status: 'active', confidence: 0.9,
+    })
+    const core = await createMemoryCore({ root: f.root, client: 'spec', log: silentLog })
+    try {
+      await core.store.create(seeded)
+    } finally {
+      await core.close()
+    }
+
+    const report = await importZcode({ src: f.src, root: f.root, mapFile: f.mapFile, apply: true })
+    expect(report.summary.imported).toBe(5)
+    expect(report.entries.find(entry => entry.title === 'zcode-hooks-config-gotcha')?.action).toBe('imported')
+
+    // core 撞名时会追加 id 片段：手写记录与导入记录两条都活着
+    const sameName = (await recordsOf(f.root)).filter(record => record.name === 'zcode-hooks-config-gotcha')
+    expect(sameName).toHaveLength(2)
+    expect(sameName.find(record => record.id === seeded.id)?.['imported-from']).toBeUndefined()
+    expect(sameName.some(record => record['imported-from'] === 'zcode:sess_alpha-0001')).toBe(true)
+  })
+
+  it('缺 originSessionId 写成裸 zcode；缺 metadata.type 归 general 并进 warnings', async () => {
+    const f = await branchFixture()
+    const report = await importZcode({ src: f.src, root: f.root, apply: true })
+    const byName = new Map((await recordsOf(f.root)).map(record => [record.name, record]))
+
+    expect(byName.get('no-session-note')).toMatchObject({ type: 'project', 'imported-from': 'zcode' })
+    expect(byName.get('no-type-note')).toMatchObject({ type: 'general', 'imported-from': 'zcode:sess_branch-0002' })
+    expect(report.unknownTypes).toEqual([{ zcodeType: null, mappedTo: 'general', titles: ['no-type-note'] }])
+    expect(report.warnings.some(warning => warning.includes('(缺 type)') && warning.includes('no-type-note'))).toBe(true)
   })
 
   it('不给 --map：所有项目按 global 处理，报告里 mapFile 为 null 且逐项目告警', async () => {
