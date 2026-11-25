@@ -20,7 +20,8 @@ import {
  *   `status=deleted` 走另一条 core 读路径列出 `.archive/` 里的记录（默认 `status=active`）；
  * - 单条与列表项同形（MemoryRecordView：title/text + core 的完整 frontmatter），前端编辑不用再猜字段；
  * - `GET /api/health` 直接返回 `{ score, issueCount, topIssues }`（Task 3 的实现，不是 MCP content 块）；
- * - 提升审核的处理动作回 `{ id, action, changed, reason?, record }`：`changed=false` 是「无需处理」，不是错误；
+ * - 提升审核的处理动作回 `{ id, action, changed, reason?, taken?, record }`：`changed=false` 是「无需处理」，不是错误；
+ *   approve 撞上全局已有的同 id 记忆时回 `changed=false, taken=true`，记录原样留在项目内、标记不动；
  * - 错误一律 `{ error: string }`，状态码区分 400/401/404/405/409/500（超限请求体 413）。
  *
  * PUT 的冲突标记用 `updatedAt`（客户端从 GET 拿到的那个值）：写回时锁内按它做 isChanged，
@@ -213,9 +214,9 @@ function parseListStatus(params: URLSearchParams): { ok: true; value: ListStatus
   return { ok: false, error: `status 只能取 active 或 deleted：${raw}` }
 }
 
-/** 提升标记的原样摘除（无损 JSON 不变式：解构剔键，不把字段置 undefined）。 */
-function withoutPromoteMark(record: MemoryRecord): MemoryRecord {
-  const { [PROMOTE_REVIEW_KEY]: _review, ...rest } = record
+/** 提升标记与项目内候选标记的原样摘除（无损 JSON 不变式：解构剔键，不把字段置 undefined）；清理口径与插件 promote 的 dismiss 一致。 */
+function withoutPromoteMarks(record: MemoryRecord): MemoryRecord {
+  const { [PROMOTE_REVIEW_KEY]: _review, globalCandidate: _candidate, ...rest } = record
   return rest
 }
 
@@ -343,7 +344,8 @@ export function createRestHandler(options: RestOptions): RestHandler {
 
   /**
    * 提升审核的处理（D5）：approve 把记录提升为正式全局记忆（scope 改 global、摘掉提升标记），
-   * dismiss 只摘标记、记录留在原作用域。两者幂等：没有标记的记录原样返回 changed=false 的「无需处理」。
+   * dismiss 只摘标记（提升标记与候选标记）、记录留在原作用域。两者幂等：没有标记的记录原样返回 changed=false 的「无需处理」。
+   * approve 与插件 promote 同口径先查 taken：global 已有同 id 的副本时不搬、不写盘，原样留在项目内。
    * 写回走 core 的 updateIfLive（同一把跨进程写锁），不碰文件。
    */
   const actOnPromotion = async (id: string, action: 'approve' | 'dismiss', res: ServerResponse): Promise<void> => {
@@ -352,6 +354,22 @@ export function createRestHandler(options: RestOptions): RestHandler {
     const current = byPosition(located)
     // 归档里的记录先恢复再处理（与 PUT 同一条规则：处理不复活记录，也不改归档内容）
     if (current.status !== 'active') return sendError(res, 409, '记录已删除，不能处理提升候选')
+    // taken 守卫（与插件 promote 同一道）：global 已有同 id 的副本（在用的或最近删除里的）时，搬过去会盖掉或撞上它。
+    // 那份旧文件不在 workspace 视角的 prev.copies 里，removeOtherCopies 也不扫 global 目录，硬搬会让 global/ 里
+    // 留下两个同 id 文件，之后读取按 updatedAt 取舍，可能读到与刚写入不同的副本。原样留在项目内，不写盘、不动标记。
+    if (action === 'approve' && current.scope === 'workspace' && current[PROMOTE_REVIEW_KEY] === true) {
+      const scopes = await core.store.copiesOf(id)
+      if (scopes.some(scope => scope.kind === 'global')) {
+        return sendJson(res, 200, {
+          id,
+          action,
+          changed: false,
+          taken: true,
+          reason: '全局已有同一条记忆（也可能在最近删除里），提升会盖掉它，已原样留在项目内',
+          record: recordView(located),
+        })
+      }
+    }
     let changed = false
     const written = await core.store.updateIfLive(current, (record) => {
       // 锁内按最新内容再判一次：标记已经被处理掉就原样返回，不写盘、不报错（重试路径也按最新一次重判）
@@ -360,7 +378,7 @@ export function createRestHandler(options: RestOptions): RestHandler {
         return record
       }
       changed = true
-      return action === 'dismiss' ? withoutPromoteMark(record) : asGlobalMemory(record)
+      return action === 'dismiss' ? withoutPromoteMarks(record) : asGlobalMemory(record)
     }, recordTarget(current))
     if (written === undefined) return sendError(res, 409, '记录已删除，未处理')
     const reread = await core.store.locate(id, readTarget())

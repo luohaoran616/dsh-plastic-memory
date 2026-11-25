@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -102,6 +102,8 @@ interface PromotionActionResult {
   id: string
   action: 'approve' | 'dismiss'
   changed: boolean
+  /** approve 时全局已有同 id 副本、记录原样留在项目内（与插件 promote 的 taken 同口径）。 */
+  taken?: boolean
   reason?: string
   record: Record<string, unknown>
 }
@@ -424,10 +426,49 @@ describe('REST 管理面（Task 5）', () => {
     expect(again.body.record).toMatchObject({ id: flagged.id, scope: 'global', text: '提升正文' })
   })
 
+  it('POST /api/promotions/:id/approve 在 global 已有同 id 副本时原样留在项目内（不搬出第二份）', async () => {
+    // 同一 id 在 global 与当前项目各一份：global 那份不在 workspace 视角的 prev.copies 里，旧实现会把项目副本
+    // 另起一个文件名搬进 global/，留下两个同 id 的文件。项目副本更新（locate 取到它）且带提升标记，才是待处理的那份。
+    const stamp = Date.now()
+    const workspaceCopy = seedRecord({
+      id: 'mem_promote_taken', name: '待提升的项目条目', content: '项目正文',
+      scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true,
+      updatedAt: stamp + 1, lastConfirmedAt: stamp + 1,
+    })
+    const globalCopy = seedRecord({ id: 'mem_promote_taken', name: '全局已有的条目', content: '全局正文', updatedAt: stamp })
+    // 先落项目副本再落全局副本：create 只清自己作用域一侧的同 id 副本，两份都留在盘上
+    const api = await startApi({ records: [workspaceCopy, globalCopy] })
+
+    const approved = await request<PromotionActionResult>(api, `/api/promotions/${workspaceCopy.id}/approve`, { method: 'POST' })
+    expect(approved.status).toBe(200)
+    // 没处理：标记不动、不搬；taken 与「没有标记」的 changed=false 区分开
+    expect(approved.body).toMatchObject({ id: workspaceCopy.id, action: 'approve', changed: false, taken: true })
+    expect(approved.body.reason).toContain('全局已有')
+    expect(approved.body.record).toMatchObject({ id: workspaceCopy.id, scope: 'workspace', text: '项目正文' })
+
+    // 项目那份仍在原目录，提升标记也没被摘
+    const kept = await api.core.store.locate(workspaceCopy.id, { kind: 'workspace', workspacePath: process.cwd() })
+    expect(kept).toBeDefined()
+    expect(kept!.filePath).toContain(api.root)
+    expect(kept!.filePath).not.toContain(`${sep}${GLOBAL_DIR}${sep}`)
+    expect(kept!.filePath).not.toContain('.archive')
+    expect((await frontmatterAt(kept!.filePath))[PROMOTE_REVIEW_KEY]).toBe(true)
+
+    // global 目录里这个 id 的文件只有一份——数文件，copiesOf 按作用域去重，看不出同作用域多副本
+    const globalDir = join(api.root, GLOBAL_DIR)
+    const globalFiles = (await readdir(globalDir)).filter(name => name.endsWith('.md') && name.toLowerCase() !== 'memory.md')
+    const globalIds = await Promise.all(globalFiles.map(async name => (await frontmatterAt(join(globalDir, name))).id))
+    expect(globalIds).toEqual([globalCopy.id])
+
+    // 候选还在队列里（标记没被摘），不是「已处理」
+    expect((await request<Array<{ id: string }>>(api, '/api/promotions')).body.map(record => record.id))
+      .toEqual([workspaceCopy.id])
+  })
+
   it('POST /api/promotions/:id/dismiss 只去掉标记、记录留在原作用域（幂等）', async () => {
     const flagged = seedRecord({
       id: 'mem_promote_dismiss', name: '留在项目', content: '项目正文',
-      scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true,
+      scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true, globalCandidate: true,
     })
     const api = await startApi({ records: [flagged] })
 
@@ -439,11 +480,14 @@ describe('REST 管理面（Task 5）', () => {
       id: flagged.id, scope: 'workspace', workspacePath: process.cwd(), status: 'active', text: '项目正文',
     })
     expect(dismissed.body.record[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    // 候选标记与插件 promote 的 dismiss 同口径一并清掉
+    expect(dismissed.body.record.globalCandidate).toBeUndefined()
     // 没有搬家、没有进 .archive/：还在项目目录顶层
     const keptPath = String(dismissed.body.record.path)
     expect(keptPath).toContain(api.root)
     expect(keptPath).not.toContain('.archive')
     expect((await frontmatterAt(keptPath))[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    expect((await frontmatterAt(keptPath)).globalCandidate).toBeUndefined()
     // 队列空
     expect((await request<Array<unknown>>(api, '/api/promotions')).body).toEqual([])
 
