@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -10,7 +10,8 @@ import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
 import { memoryRecordSchema, type MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { GLOBAL_DIR } from '@plastic/core/storage/paths.ts'
-import { createMemoryTools, type MemoryTools } from './tools.ts'
+import { splitFrontmatter } from '@plastic/core/storage/frontmatter.ts'
+import { PROMOTE_REVIEW_KEY, createMemoryTools, type MemoryTools } from './tools.ts'
 import { baseEnv, callJson } from './spec-helpers.ts'
 import {
   DEFAULT_PORT, DEFAULT_WEBUI_DIR, LOOPBACK_HOST, parseServeArgs, startMemoryServer,
@@ -88,6 +89,23 @@ interface JsonResponse<T = unknown> {
   headers: Headers
 }
 
+/** GET /api/records 的分页信封：records 是本页，hasMore 表示后面还有（limit 缺省 100）。 */
+interface RecordPage<T = Record<string, unknown>> {
+  records: T[]
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
+/** 提升审核的处理结果：changed=false 表示这条记录没有待处理标记（已处理过），不是错误。 */
+interface PromotionActionResult {
+  id: string
+  action: 'approve' | 'dismiss'
+  changed: boolean
+  reason?: string
+  record: Record<string, unknown>
+}
+
 async function request<T = unknown>(api: ApiFixture, path: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const response = await fetch(new URL(path, api.server.url), init)
   const text = await response.text()
@@ -107,6 +125,11 @@ function putJson(api: ApiFixture, path: string, body: unknown, headers: Record<s
   })
 }
 
+/** 落盘文件的 frontmatter：提升/驳回要验的是写进文件的结果，不只是接口返回的视图。 */
+async function frontmatterAt(path: string): Promise<Record<string, unknown>> {
+  return splitFrontmatter(await readFile(path, 'utf8')).data
+}
+
 describe('REST 管理面（Task 5）', () => {
   it('GET /api/records 按 scope 列出可见集合，q 复用 core 检索并返回完整记录视图', async () => {
     const visible = seedRecord({
@@ -120,22 +143,64 @@ describe('REST 管理面（Task 5）', () => {
     const api = await startApi({ records: [visible, global, other] })
 
     // scope 缺省 = 可见集合（global + 当前项目），别的项目不在内
-    const all = await request<Array<{ id: string }>>(api, '/api/records')
+    const all = await request<RecordPage<{ id: string }>>(api, '/api/records')
     expect(all.status).toBe(200)
-    expect(all.body.map(record => record.id).sort()).toEqual([global.id, visible.id].sort())
+    expect(all.body.records.map(record => record.id).sort()).toEqual([global.id, visible.id].sort())
+    // 分页信封的缺省值：limit 100、offset 0、没有下一页
+    expect(all.body).toMatchObject({ limit: 100, offset: 0, hasMore: false })
 
-    const scoped = await request<Array<{ id: string; workspacePath?: string }>>(api, `/api/records?scope=${encodeURIComponent('/projects/other')}`)
-    expect(scoped.body.map(record => record.id)).toEqual([other.id])
-    expect(scoped.body[0]!.workspacePath).toBe('/projects/other')
+    const scoped = await request<RecordPage<{ id: string; workspacePath?: string }>>(api, `/api/records?scope=${encodeURIComponent('/projects/other')}`)
+    expect(scoped.body.records.map(record => record.id)).toEqual([other.id])
+    expect(scoped.body.records[0]!.workspacePath).toBe('/projects/other')
 
-    const searched = await request<Array<Record<string, unknown>>>(api, '/api/records?q=pnpm')
-    expect(searched.body.map(record => record.id)).toEqual([visible.id])
+    const searched = await request<RecordPage>(api, '/api/records?q=pnpm')
+    expect(searched.body.records.map(record => record.id)).toEqual([visible.id])
     // 列表与单条同形：带 title/text/path/scope，编辑不需要再猜字段
-    expect(searched.body[0]).toMatchObject({
+    expect(searched.body.records[0]).toMatchObject({
       id: visible.id, title: '包管理用 pnpm', text: expect.stringContaining('pnpm'),
       scope: 'workspace', workspacePath: process.cwd(), status: 'active',
     })
-    expect(String(searched.body[0]!.path)).toContain(api.root)
+    expect(String(searched.body.records[0]!.path)).toContain(api.root)
+  })
+
+  it('GET /api/records 支持 limit/offset 翻页：不重不漏、带 hasMore，越过末页回空页', async () => {
+    const base = Date.now()
+    // 各条 lastConfirmedAt 不同：检索排序在同一份磁盘内容上稳定，翻页才谈得上「后面的记录」
+    const records = Array.from({ length: 7 }, (_, index) => seedRecord({
+      id: `mem_page_${index}`, name: `分页条目 ${index}`, content: `分页正文 ${index}`,
+      lastConfirmedAt: base + index,
+    }))
+    const api = await startApi({ records })
+
+    const first = await request<RecordPage<{ id: string }>>(api, '/api/records?limit=3')
+    expect(first.status).toBe(200)
+    expect(first.body).toMatchObject({ limit: 3, offset: 0, hasMore: true })
+    // 新近确认的在前：第 7、6、5 条
+    expect(first.body.records.map(record => record.id)).toEqual(['mem_page_6', 'mem_page_5', 'mem_page_4'])
+
+    const collected = first.body.records.map(record => record.id)
+    let offset = 3
+    let hasMore = first.body.hasMore
+    while (hasMore) {
+      const page = await request<RecordPage<{ id: string }>>(api, `/api/records?limit=3&offset=${offset}`)
+      expect(page.status).toBe(200)
+      expect(page.body).toMatchObject({ limit: 3, offset })
+      collected.push(...page.body.records.map(record => record.id))
+      hasMore = page.body.hasMore
+      offset += 3
+    }
+    // 100 条的缺省上限不再是硬截断：翻页能取到全部记录，且不重不漏
+    expect(collected).toEqual([...records].reverse().map(record => record.id))
+
+    const beyond = await request<RecordPage>(api, '/api/records?limit=3&offset=30')
+    expect(beyond.status).toBe(200)
+    expect(beyond.body.records).toEqual([])
+    expect(beyond.body.hasMore).toBe(false)
+
+    // 非法分页参数明确 400，不静默按缺省值处理
+    for (const path of ['/api/records?limit=0', '/api/records?limit=abc', '/api/records?limit=101', '/api/records?offset=-1']) {
+      expect((await request(api, path)).status).toBe(400)
+    }
   })
 
   it('GET /api/records/:id 返回完整记录，未知 id 回 404 JSON', async () => {
@@ -222,8 +287,8 @@ describe('REST 管理面（Task 5）', () => {
     expect(archived.status).toBe(200)
     expect(archived.body.status).toBe('deleted')
     expect(String(archived.body.path)).toContain('.archive')
-    const listed = await request<Array<{ id: string }>>(api, '/api/records')
-    expect(listed.body.map(record => record.id)).not.toContain(seeded.id)
+    const listed = await request<RecordPage<{ id: string }>>(api, '/api/records')
+    expect(listed.body.records.map(record => record.id)).not.toContain(seeded.id)
 
     const restored = await request<Record<string, unknown>>(api, `/api/records/${seeded.id}/restore`, { method: 'POST' })
     expect(restored.status).toBe(200)
@@ -235,6 +300,47 @@ describe('REST 管理面（Task 5）', () => {
     const reread = await request<Record<string, unknown>>(api, `/api/records/${seeded.id}`)
     expect(reread.body.id).toBe(before.body.id)
     expect(reread.body.text).toBe(before.body.text)
+  })
+
+  it('GET /api/records?status=deleted 列出已软删记录：默认列表不含、恢复后消失', async () => {
+    const doomed = seedRecord({
+      id: 'mem_archive_list', name: '要归档的条目', content: '归档正文', summary: '归档',
+      scope: 'workspace', workspacePath: process.cwd(),
+    })
+    const live = seedRecord({ id: 'mem_archive_live', name: '在用条目', content: '在用正文' })
+    const api = await startApi({ records: [doomed, live] })
+
+    const empty = await request<RecordPage<{ id: string }>>(api, '/api/records?status=deleted')
+    expect(empty.status).toBe(200)
+    expect(empty.body.records).toEqual([])
+
+    expect((await request(api, `/api/records/${doomed.id}`, { method: 'DELETE' })).status).toBe(200)
+
+    const archived = await request<RecordPage<{ id: string; status: string; text: string; path: string }>>(api, '/api/records?status=deleted')
+    expect(archived.body.records.map(record => record.id)).toEqual([doomed.id])
+    expect(archived.body.records[0]).toMatchObject({ id: doomed.id, status: 'deleted', text: '归档正文', title: '要归档的条目' })
+    expect(archived.body.records[0]!.path).toContain('.archive')
+
+    // 默认（active）列表不含归档记录
+    const active = await request<RecordPage<{ id: string }>>(api, '/api/records')
+    expect(active.body.records.map(record => record.id)).toEqual([live.id])
+
+    // scope 收窄到别的项目：看不到这个项目的归档
+    const elsewhere = await request<RecordPage>(api, `/api/records?status=deleted&scope=${encodeURIComponent('/projects/elsewhere')}`)
+    expect(elsewhere.body.records).toEqual([])
+
+    // q 走 core 的 queryScope 过滤（不是另写一套打分）
+    const filtered = await request<RecordPage<{ id: string }>>(api, '/api/records?status=deleted&q=归档')
+    expect(filtered.body.records.map(record => record.id)).toEqual([doomed.id])
+
+    // 未知 status 值明确 400，不静默当成 active
+    expect((await request(api, '/api/records?status=bogus')).status).toBe(400)
+
+    // 恢复后从归档列表消失、回到 active 列表
+    expect((await request(api, `/api/records/${doomed.id}/restore`, { method: 'POST' })).status).toBe(200)
+    expect((await request<RecordPage>(api, '/api/records?status=deleted')).body.records).toEqual([])
+    expect((await request<RecordPage<{ id: string }>>(api, '/api/records')).body.records.map(record => record.id).sort())
+      .toEqual([doomed.id, live.id].sort())
   })
 
   it('DELETE 与 restore 的未知 id 回 404，缺 updatedAt 的 PUT 回 400', async () => {
@@ -281,6 +387,90 @@ describe('REST 管理面（Task 5）', () => {
     }
   })
 
+  it('POST /api/promotions/:id/approve 把待提升记录变成正式全局记忆（幂等）', async () => {
+    const flagged = seedRecord({
+      id: 'mem_promote_approve', name: '待提升的条目', content: '提升正文',
+      scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true,
+    })
+    const untouched = seedRecord({
+      id: 'mem_promote_stay', name: '保持待审', scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true,
+    })
+    const api = await startApi({ records: [flagged, untouched] })
+
+    const approved = await request<PromotionActionResult>(api, `/api/promotions/${flagged.id}/approve`, { method: 'POST' })
+    expect(approved.status).toBe(200)
+    expect(approved.body).toMatchObject({ id: flagged.id, action: 'approve', changed: true })
+    // 作用域搬到 global、提升标记没了、正文与标题不漂移
+    expect(approved.body.record).toMatchObject({ id: flagged.id, scope: 'global', status: 'active', title: '待提升的条目', text: '提升正文' })
+    expect(approved.body.record.workspacePath).toBeUndefined()
+    expect(approved.body.record[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    // 真的落在 global 目录，写进文件的 frontmatter 也不再带提升标记（作用域由目录表达，frontmatter 不写 scope）
+    const promotedPath = String(approved.body.record.path)
+    expect(promotedPath).toContain(`${join(api.root, GLOBAL_DIR)}${sep}`)
+    expect(await frontmatterAt(promotedPath)).toMatchObject({ id: flagged.id, name: '待提升的条目', status: 'active' })
+    expect((await frontmatterAt(promotedPath))[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    // 同一 id 只剩全局这一份副本，项目里不再有副本
+    expect(await api.core.store.copiesOf(flagged.id)).toEqual([{ kind: 'global' }])
+
+    // 队列里只剩没处理的那条
+    const queue = await request<Array<{ id: string }>>(api, '/api/promotions')
+    expect(queue.body.map(record => record.id)).toEqual([untouched.id])
+
+    // 幂等：再 approve 一次回 200「无需处理」，不是 500，也不把记录搅坏
+    const again = await request<PromotionActionResult>(api, `/api/promotions/${flagged.id}/approve`, { method: 'POST' })
+    expect(again.status).toBe(200)
+    expect(again.body).toMatchObject({ id: flagged.id, action: 'approve', changed: false })
+    expect(again.body.reason).toBeTruthy()
+    expect(again.body.record).toMatchObject({ id: flagged.id, scope: 'global', text: '提升正文' })
+  })
+
+  it('POST /api/promotions/:id/dismiss 只去掉标记、记录留在原作用域（幂等）', async () => {
+    const flagged = seedRecord({
+      id: 'mem_promote_dismiss', name: '留在项目', content: '项目正文',
+      scope: 'workspace', workspacePath: process.cwd(), 'needs-promote-review': true,
+    })
+    const api = await startApi({ records: [flagged] })
+
+    const dismissed = await request<PromotionActionResult>(api, `/api/promotions/${flagged.id}/dismiss`, { method: 'POST' })
+    expect(dismissed.status).toBe(200)
+    expect(dismissed.body).toMatchObject({ id: flagged.id, action: 'dismiss', changed: true })
+    // 作用域不变、正文不变、标记没了
+    expect(dismissed.body.record).toMatchObject({
+      id: flagged.id, scope: 'workspace', workspacePath: process.cwd(), status: 'active', text: '项目正文',
+    })
+    expect(dismissed.body.record[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    // 没有搬家、没有进 .archive/：还在项目目录顶层
+    const keptPath = String(dismissed.body.record.path)
+    expect(keptPath).toContain(api.root)
+    expect(keptPath).not.toContain('.archive')
+    expect((await frontmatterAt(keptPath))[PROMOTE_REVIEW_KEY]).toBeUndefined()
+    // 队列空
+    expect((await request<Array<unknown>>(api, '/api/promotions')).body).toEqual([])
+
+    const again = await request<PromotionActionResult>(api, `/api/promotions/${flagged.id}/dismiss`, { method: 'POST' })
+    expect(again.status).toBe(200)
+    expect(again.body.changed).toBe(false)
+    expect(again.body.record).toMatchObject({ id: flagged.id, scope: 'workspace' })
+  })
+
+  it('提升处理动作只收 POST：未知 id 404、GET 405、已软删记录 409', async () => {
+    const flagged = seedRecord({ id: 'mem_promote_errors', name: '错误路径', 'needs-promote-review': true })
+    const api = await startApi({ records: [flagged] })
+
+    expect((await request(api, '/api/promotions/mem_none/approve', { method: 'POST' })).status).toBe(404)
+    expect((await request(api, '/api/promotions/mem_none/dismiss', { method: 'POST' })).status).toBe(404)
+
+    const wrongMethod = await request<{ error: string }>(api, `/api/promotions/${flagged.id}/approve`)
+    expect(wrongMethod.status).toBe(405)
+    expect(wrongMethod.headers.get('allow')).toContain('POST')
+
+    // 已软删的候选不能处理（先恢复再说），回明确的 409 而不是 500
+    expect((await request(api, `/api/records/${flagged.id}`, { method: 'DELETE' })).status).toBe(200)
+    const deleted = await request<{ error: string }>(api, `/api/promotions/${flagged.id}/approve`, { method: 'POST' })
+    expect(deleted.status).toBe(409)
+    expect(deleted.body.error).toBeTruthy()
+  })
+
   it('只绑 127.0.0.1：监听地址不是 0.0.0.0 或通配地址', async () => {
     expect(LOOPBACK_HOST).toBe('127.0.0.1')
     const api = await startApi()
@@ -308,6 +498,33 @@ describe('REST 管理面（Task 5）', () => {
     expect((await request(open, '/api/health')).status).toBe(200)
   })
 
+  it('token 启用时静态产物放行、数据面仍 401（浏览器导航带不了 Authorization 头）', async () => {
+    const webuiDir = await mkdtemp(join(tmpdir(), 'pm-mcp-webui-token-'))
+    await mkdir(join(webuiDir, 'assets'), { recursive: true })
+    await writeFile(join(webuiDir, 'index.html'), '<!doctype html><title>plastic-token</title>', 'utf8')
+    await writeFile(join(webuiDir, 'assets', 'app.js'), 'console.log("token")', 'utf8')
+    try {
+      const api = await startApi({ webuiDir, token: 's3cret' })
+
+      // 静态文件不带 token 也放行：浏览器导航和 <script> 加不了请求头
+      const index = await fetch(new URL('/', api.server.url))
+      expect(index.status).toBe(200)
+      expect(await index.text()).toContain('plastic-token')
+      const asset = await fetch(new URL('/assets/app.js', api.server.url))
+      expect(asset.status).toBe(200)
+      expect(await asset.text()).toContain('console.log')
+
+      // 同一个实例的数据面照旧校验：无 token 401，带对 token 200
+      expect((await request(api, '/api/health')).status).toBe(401)
+      expect((await request(api, '/api/records')).status).toBe(401)
+      const health = await request<{ score: number }>(api, '/api/health', { headers: { authorization: 'Bearer s3cret' } })
+      expect(health.status).toBe(200)
+      expect(health.body.score).toBe(100)
+    } finally {
+      await rm(webuiDir, { recursive: true, force: true })
+    }
+  })
+
   it('/mcp 用 Streamable HTTP 暴露同一组五工具，写入经同一份 core 落盘', async () => {
     const api = await startApi()
     const client = new Client({ name: 'rest-spec-http', version: '0.0.0' })
@@ -330,10 +547,14 @@ describe('REST 管理面（Task 5）', () => {
   })
 
   it('静态托管指向 packages/webui/dist：有产物时挂载并回 SPA 入口，目录不存在时其余端点照常', async () => {
-    const webuiDir = await mkdtemp(join(tmpdir(), 'pm-mcp-webui-'))
+    const base = await mkdtemp(join(tmpdir(), 'pm-mcp-webui-'))
+    const webuiDir = join(base, 'dist')
     await mkdir(join(webuiDir, 'assets'), { recursive: true })
     await writeFile(join(webuiDir, 'index.html'), '<!doctype html><title>plastic</title>', 'utf8')
     await writeFile(join(webuiDir, 'assets', 'app.js'), 'console.log("plastic")', 'utf8')
+    // 穿越目标必须是产物目录之外真实存在的文件：守卫失效时会读到它，这条用例才有区分力
+    const sentinel = 'pm-mcp-traversal-sentinel-4a1c'
+    await writeFile(join(base, 'secret.txt'), sentinel, 'utf8')
     try {
       const api = await startApi({ webuiDir })
       const index = await fetch(new URL('/', api.server.url))
@@ -350,12 +571,13 @@ describe('REST 管理面（Task 5）', () => {
       const spa = await fetch(new URL('/memory/123', api.server.url))
       expect(await spa.text()).toContain('<!doctype html>')
       expect((await fetch(new URL('/missing.js', api.server.url))).status).toBe(404)
-      // 编码过的 ../ 穿越目录：解码后越出产物目录，一律拒绝（不能读到包根的 package.json）
-      const escaped = await fetch(new URL('/%2e%2e%2f%2e%2e%2fpackage.json', api.server.url))
+      // 编码过的 ../ 穿越：解码后落到产物目录之外的 secret.txt（存在且内容可辨认），
+      // 守卫一删就会把哨兵内容吐出来——不是靠「目标本来就不存在」蒙过去的 404
+      const escaped = await fetch(new URL('/%2e%2e%2fsecret.txt', api.server.url))
       expect(escaped.status).toBe(404)
-      expect(await escaped.text()).not.toContain('@plastic/mcp')
+      expect(await escaped.text()).not.toContain(sentinel)
     } finally {
-      await rm(webuiDir, { recursive: true, force: true })
+      await rm(base, { recursive: true, force: true })
     }
 
     // 目录不存在时启动不报错、不挂静态，API 照常
