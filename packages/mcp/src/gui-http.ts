@@ -6,7 +6,8 @@ import { sendJson } from './rest.ts'
  * 独立页面专用的 `/api/gui/*`（D4）：命令行、视图原文、记忆根内文件、打开文件四个端点。
  * 鉴权不在这一层：serve.ts 按 `/api` 的既有规则先验 `Authorization`，这里只管路径、方法与写保护。
  *
- * 安全约定（D6）：两个写端点只收 `content-type: application/json`；带 `Origin` 且不是服务自己的来源一律拒。
+ * 安全约定（D6、R5）：两个写端点只收 `content-type: application/json`；带 `Origin` 且不是服务自己的来源一律拒
+ * （服务自己的来源另认同端口的 localhost 别名，见 originAllowed）。
  * 跨站网页发不出带 JSON content-type 的简单请求（那要先过 CORS 预检），所以这两道合起来挡住借浏览器发起的跨站写。
  * 读端点没有副作用，浏览器也读不到跨站响应（同源策略），不再加 Origin 检查。
  *
@@ -97,12 +98,30 @@ function acceptJsonWrite(req: IncomingMessage, res: ServerResponse, allowedOrigi
     return false
   }
   const origin = req.headers.origin
-  if (origin !== undefined && origin.trim() !== allowedOrigin) {
+  if (origin !== undefined && !originAllowed(origin.trim(), allowedOrigin)) {
     req.resume()
     sendGuiError(res, 403, 'gui/bad-origin', `来源不被允许：${origin}`)
     return false
   }
   return true
+}
+
+/**
+ * 来源判定（R5）：请求带的 origin 必须等于服务自己的来源。
+ * 绑定地址是 127.0.0.1 时，同端口的 localhost 是同一个服务的别名：浏览器把 origin 设成发起页自己的来源，
+ * 用户用 http://localhost:<port> 打开本服务的页面时，写请求带的就是这个别名，端口必须一致。
+ * 别名只换主机名、端口照抄，别的端口是别的服务；外来源与 null 照拒。
+ */
+function originAllowed(origin: string, allowedOrigin: string): boolean {
+  if (origin === allowedOrigin) return true
+  let allowed: URL
+  try {
+    allowed = new URL(allowedOrigin)
+  } catch {
+    return false
+  }
+  if (allowed.hostname !== '127.0.0.1' || allowed.port === '') return false
+  return origin === `http://localhost:${allowed.port}`
 }
 
 /** 读整个请求体并收窄成 400/413 的失败体；两个写端点的前三步完全一样。 */

@@ -148,6 +148,23 @@ describe('GUI 的 HTTP 接口（D4、D6）', () => {
     expect(plane.openPath).toHaveBeenCalledTimes(1)
   })
 
+  it('同端口的 localhost 是绑定地址的别名：同端口放行，别端口照拒', async () => {
+    const plane = createFakePlane()
+    const gui = await startGui(plane)
+    const port = new URL(gui.allowedOrigin).port
+
+    // 用户用 http://localhost:<port> 打开本服务的页面时，浏览器给写请求带的就是这个来源
+    const alias = await postJson(gui, '/api/gui/commands', { line: '/memory info' }, { origin: `http://localhost:${port}` })
+    expect(alias.status).toBe(200)
+    expect(JSON.parse(alias.text)).toEqual({ kind: 'success', text: '完成' })
+
+    // 别名只认端口一致：别的端口是别的服务，照拒
+    const otherPort = await postJson(gui, '/api/gui/commands', { line: '/memory info' }, { origin: `http://localhost:${Number(port) + 1}` })
+    expect(otherPort.status).toBe(403)
+    expect(errorCode(otherPort.text)).toBe('gui/bad-origin')
+    expect(plane.run).toHaveBeenCalledTimes(1)
+  })
+
   it('跨站写请求被拒：外来源加简单 content-type，沙箱页的 null 来源也不放行', async () => {
     const plane = createFakePlane()
     const gui = await startGui(plane)
