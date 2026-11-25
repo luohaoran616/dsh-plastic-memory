@@ -104,10 +104,16 @@ async function main(argv: string[]): Promise<void> {
     case 'stdio':
       await runStdio()
       return
+    case 'import-zcode': {
+      // 动态加载：stdio 模式不为导入器背 fs 与读映射文件的依赖，两条路径互不影响
+      const { runImportZcodeCli } = await import('./import-zcode.ts')
+      await runImportZcodeCli(argv.slice(1), stderrLog)
+      return
+    }
     case 'serve':
-      fail('serve 子命令还没实现（HTTP 模式在后续任务接入），本版本只有 stdio')
+      fail('serve 子命令还没实现（HTTP 模式在后续任务接入），本版本有 stdio 与 import-zcode')
     default:
-      fail(`未知子命令：${command}（可用：stdio（缺省）、serve）`)
+      fail(`未知子命令：${command}（可用：stdio（缺省）、serve、import-zcode）`)
   }
 }
 

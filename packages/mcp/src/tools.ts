@@ -119,8 +119,9 @@ export function deriveSummary(text: string): string {
   return chars.length > SUMMARY_MAX_CHARS ? `${chars.slice(0, SUMMARY_MAX_CHARS).join('')}…` : base
 }
 
-/** 与插件写入管线同形的 id（pipeline.ts 的 `mem_` + 时间戳 base36 + 随机段）；core 没有 id 生成器。 */
-function newMemoryId(now: number): string {
+/** 与插件写入管线同形的 id（pipeline.ts 的 `mem_` + 时间戳 base36 + 随机段）；core 没有 id 生成器。
+ *  ZCode 导入器也用它：导入记录与 MCP 写入是同一种 id 形态。 */
+export function newMemoryId(now: number): string {
   return `mem_${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`
 }
 
