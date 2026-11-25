@@ -5,7 +5,7 @@
     "outDir": "lib",
     "rootDir": "src",
     "rewriteRelativeImportExtensions": true,
-    "declaration": false,
+    "declaration": true,
     "sourceMap": false,
     // 发布构建要对 core 的编译产物（core 先构建，见 build 脚本）取声明，不能把 core 的源码拉进本程序的 rootDir。
     // 深路径导入带 .ts 后缀，所以模式键按 `*.ts` 匹配，值再去掉后缀让扩展名解析补 .d.ts。

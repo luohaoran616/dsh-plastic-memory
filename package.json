@@ -26,6 +26,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./lib/client.js",
+    "./client/*": "./client/*",
+    "./lib/standalone/*": "./lib/standalone/*",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -61,6 +63,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/cosmokit": "1.9.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
     "@deepseek-ai/dsh-agent-instructions": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.5",

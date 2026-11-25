@@ -21,6 +21,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: 4.1.0
         version: 4.1.0
+      '@deepseek-ai/cosmokit':
+        specifier: 1.9.0
+        version: 1.9.0
       '@deepseek-ai/dsh-agent':
         specifier: 0.2.2-rc.5
         version: 0.2.2-rc.5(ace02401f24bb9eeec7666ff73a939e9)
