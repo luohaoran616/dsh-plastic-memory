@@ -6,15 +6,15 @@ import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
+import { createMemoryCore } from '@plastic/core/factory.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
-import { API_PREFIX, createRestHandler, sendError, sendJson } from './rest.ts'
+import { API_PREFIX, sendError, sendJson } from './http-util.ts'
 import { handleGuiRequest, type GuiPlanePort } from './gui-http.ts'
 
 /**
  * `plastic-mcp serve`：HTTP 模式。同一个 node:http 服务暴露三样（D4）——
- * `/mcp`（Streamable HTTP 的 MCP 端点）、`/api/*`（REST 管理面）、`/`（WebUI 静态产物）。
+ * `/mcp`（Streamable HTTP 的 MCP 端点）、`/api/gui/*`（独立页面接口）、`/`（WebUI 静态产物）。
  * 只绑 127.0.0.1；`--token` 缺省关闭鉴权，启用时 `/api` 与 `/mcp` 校验 `Authorization: Bearer`。
  * 静态产物目录不存在就不挂静态，其余端点照常工作（Task 6 构建前也能起服务）。
  *
@@ -65,7 +65,7 @@ export function parseServeArgs(argv: string[]): ServeArgs {
 }
 
 export interface MemoryHttpServerOptions {
-  core: MemoryCore
+  /** MCP 工具面：/mcp 端点用它应答。 */
   tools: MemoryTools
   /** 缺省 DEFAULT_PORT；0 = 随机空闲端口。 */
   port?: number
@@ -73,10 +73,6 @@ export interface MemoryHttpServerOptions {
   token?: string
   /** WebUI 产物目录；缺省 packages/webui/dist。目录不存在就不挂静态托管。 */
   webuiDir?: string
-  /** 固定项目映射（PLASTIC_PROJECT），REST 的缺省可见集合用。 */
-  project?: string
-  /** 相对路径的解析基准与缺省项目；缺省 process.cwd。 */
-  cwd?: () => string
   /** 独立页面的无宿主平面；有它时 /api/gui/* 由 handleGuiRequest 处理，关闭服务时一并释放。 */
   gui?: GuiPlanePort
   log?: MemoryLogger
@@ -216,13 +212,8 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, tools: Memor
 }
 
 export async function startMemoryServer(options: MemoryHttpServerOptions): Promise<MemoryHttpServer> {
-  const { core, tools, token, gui } = options
+  const { tools, token, gui } = options
   const log = options.log
-  const rest = createRestHandler({
-    core, tools, log,
-    ...(options.project === undefined ? {} : { project: options.project }),
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-  })
   const staticRoot = staticRootOf(options.webuiDir ?? DEFAULT_WEBUI_DIR)
   // 鉴权之后才轮到界面接口；来源比对用服务自己的地址，监听之后才知道端口
   let allowedOrigin = ''
@@ -241,7 +232,8 @@ export async function startMemoryServer(options: MemoryHttpServerOptions): Promi
       return
     }
     if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
-      if (!(await rest(req, res, url))) sendError(res, 404, 'Not Found')
+      // 旧的 REST 管理面已删：/api 下只剩界面接口（上面已认领），其余路径一律 404
+      sendError(res, 404, 'Not Found')
       return
     }
     if (staticRoot === undefined) {
@@ -350,8 +342,7 @@ export async function runServeCli(argv: string[], config: ServeCliConfig, log: M
   let server: MemoryHttpServer
   try {
     server = await startMemoryServer({
-      core, tools, port: args.port, log,
-      ...(config.project === undefined ? {} : { project: config.project }),
+      tools, port: args.port, log,
       ...(config.gui === undefined ? {} : { gui: config.gui }),
       ...(args.token === undefined ? {} : { token: args.token }),
     })
@@ -361,7 +352,7 @@ export async function runServeCli(argv: string[], config: ServeCliConfig, log: M
   }
   log.info(`HTTP 模式已启动：${server.url}（仅本机绑定${args.token === undefined ? '，未启用鉴权' : '，Bearer 鉴权已启用'}）`)
   log.info(staticRootOf(DEFAULT_WEBUI_DIR) === undefined
-    ? 'WebUI 产物不存在，当前只提供 /api 与 /mcp'
+    ? 'WebUI 产物不存在，当前只提供 /api/gui 与 /mcp'
     : `静态托管：${DEFAULT_WEBUI_DIR}`)
 
   let closing = false

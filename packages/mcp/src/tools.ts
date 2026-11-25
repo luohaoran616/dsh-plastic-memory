@@ -8,7 +8,7 @@ import { byPosition, type LocatedFile } from '@plastic/core/storage/table.ts'
 /**
  * MCP 工具的实现层（D2 的五个工具）：只做「MCP 入参 → core 调用 → MCP 出参」的映射，
  * 写入全部走 `createMemoryCore` 组装出的 store（同一把跨进程写锁），不自己碰文件。
- * 这一层不依赖 MCP 框架，后续 REST 面直接复用同一组函数（Task 5）。
+ * 这一层不依赖 MCP 框架，MCP 注册与 HTTP 模式的 `/mcp` 端点复用同一组函数。
  */
 
 export type MemoryOrigin = 'user-stated' | 'model-observed'
@@ -51,7 +51,7 @@ export interface MemoryReadInput {
 /** 完整记录：core 的 schema 字段原样保留（name/content 映射成 D2 的 title/text），另带文件绝对路径。 */
 export type MemoryRecordView = Omit<MemoryRecord, 'name' | 'content'> & { title: string; text: string; path: string }
 
-/** 落盘记录 → 对外视图：MCP 的 memory_read 与 REST 的单条读共用这一份字段映射。 */
+/** 落盘记录 → 对外视图：MCP 的 memory_read 与其他读入口共用这一份字段映射。 */
 export function recordView(located: LocatedFile): MemoryRecordView {
   const { name, content, ...rest } = byPosition(located)
   return { ...rest, title: name, text: content, path: located.filePath }
@@ -64,7 +64,7 @@ export interface MemoryWorkspaceOptions {
   cwd?: () => string
 }
 
-/** project 缺省时的项目目录：PLASTIC_PROJECT（"global" 不是路径，退回 cwd）→ cwd。工具面与 REST 面共用。 */
+/** project 缺省时的项目目录：PLASTIC_PROJECT（"global" 不是路径，退回 cwd）→ cwd。工具面与 HTTP 模式共用。 */
 export function defaultWorkspacePath(options: MemoryWorkspaceOptions = {}): string {
   const fixed = requestedProject(options.project)
   const cwd = options.cwd?.() ?? process.cwd()
@@ -86,7 +86,7 @@ export interface MemoryHealthResult {
   topIssues: string[]
 }
 
-/** 五个工具的实现层接口：MCP 注册与 REST 面共用。 */
+/** 五个工具的实现层接口：MCP 注册与 HTTP 模式的 `/mcp` 端点共用。 */
 export interface MemoryTools {
   save(input: MemorySaveInput): Promise<MemorySaveResult>
   search(input: MemorySearchInput): Promise<MemorySearchResult>

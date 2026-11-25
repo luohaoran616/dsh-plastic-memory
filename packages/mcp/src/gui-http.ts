@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { GUI_VIEW_FILES } from '@plastic/core/gui/contract.ts'
-import { sendJson } from './rest.ts'
+import { sendJson } from './http-util.ts'
 
 /**
  * 独立页面专用的 `/api/gui/*`（D4）：命令行、视图原文、记忆根内文件、打开文件四个端点。
@@ -12,7 +12,7 @@ import { sendJson } from './rest.ts'
  * 读端点没有副作用，浏览器也读不到跨站响应（同源策略），不再加 Origin 检查。
  *
  * 错误体统一 `{ error: { code, message } }`：code 是前端分支用的稳定码，message 只作说明。
- * 响应一律走 rest.ts 的 sendJson；sendError 只写扁平的 `{ error: string }`，表达不了这里的码。
+ * 响应一律走 http-util.ts 的 sendJson；sendError 只写扁平的 `{ error: string }`，表达不了这里的码。
  */
 
 /** GUI 平面的 HTTP 侧形状：Task 3 的 GuiPlane 结构一致，bin.ts 直接赋值由 typecheck 证明。 */

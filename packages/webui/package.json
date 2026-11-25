@@ -1,7 +1,7 @@
 {
   "name": "@plastic/webui",
   "version": "0.0.0",
-  "description": "Standalone WebUI for plastic-memory: browse, search, edit, soft-delete and review records over the REST management plane",
+  "description": "Standalone WebUI for plastic-memory: the original memory page served over the GUI plane",
   "license": "MIT",
   "private": true,
   "type": "module",
