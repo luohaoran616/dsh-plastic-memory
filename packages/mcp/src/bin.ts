@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMemoryCore } from '@plastic/core/factory.ts'
+import { createRootLock } from '@plastic/core/storage/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
 import type { GuiPlanePort } from './gui-http.ts'
@@ -146,13 +147,15 @@ async function main(argv: string[]): Promise<void> {
       // 模型线路（D7）：两个变量都不给时没有模型，命令里的模型动作按既有路径回 llm-unavailable
       const llm = guiEnv.llm === undefined ? null : createAnthropicLlm(guiEnv.llm)
       // 直接赋给 GuiPlanePort：类型检查据此证明 Task 3 的 GuiPlane 与本包的结构一致
+      // 记忆根写锁：core 与 GUI 平面共用这一把（同进程两处不再各开一把锁库连接、互相抢锁）
+      const rootLock = createRootLock({ root: config.root, log: stderrLog })
       const gui: GuiPlanePort = await createGuiPlane({
         memoryRoot: config.root, project: guiEnv.project, llm,
-        autoCheckup: guiEnv.autoCheckup, log: stderrLog,
+        autoCheckup: guiEnv.autoCheckup, log: stderrLog, lock: rootLock,
       })
       // D8：自动体检要在后台花模型额度，是开是关必须留在启动日志里
       stderrLog.info(`自动体检调度器${guiEnv.autoCheckup ? '已开启（PLASTIC_AUTO_CHECKUP=1）' : '未开启（设 PLASTIC_AUTO_CHECKUP=1 才跑）'}`)
-      await runServeCli(argv.slice(1), { ...config, gui }, stderrLog)
+      await runServeCli(argv.slice(1), { ...config, gui, lock: rootLock }, stderrLog)
       return
     }
     default:

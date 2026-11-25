@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { encodeRecord } from '@plastic/core/storage/frontmatter.ts'
 import { KV_IMPORT_MARKER } from '@plastic/core/storage/legacy-kv-import.ts'
 import { GLOBAL_DIR, STATE_DIR } from '@plastic/core/storage/paths.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/store.ts'
 import {
   deletedViewSchema, libraryViewSchema, memoryCommandResultSchema, workspaceMapViewSchema,
@@ -188,6 +189,20 @@ describe('createGuiPlane', () => {
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('注入的锁被平面的写路径使用：给了锁就不再自建一把', async () => {
+    // 同一进程里平面与 core 共用一把锁时，注入的那把就是唯一的写锁
+    const calls: number[] = []
+    const stub: RootLock = { run: async <T>(fn: () => Promise<T>): Promise<T> => { calls.push(1); return fn() } }
+    const plane = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet, lock: stub })
+    try {
+      expect(calls.length).toBeGreaterThan(0)
+      // 视图写入走的是注入的锁：自建的锁库没有出现
+      await expect(stat(join(root, STATE_DIR, 'lock', 'write-lock.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await plane.dispose()
     }
   })
 

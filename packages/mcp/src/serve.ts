@@ -6,7 +6,8 @@ import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createMemoryCore } from '@plastic/core/factory.ts'
+import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
 import { API_PREFIX, sendError, sendJson } from './http-util.ts'
@@ -287,6 +288,26 @@ export interface ServeCliConfig {
   project?: string
   /** bin 装配好的无宿主平面；stdio 模式不涉及。 */
   gui?: GuiPlanePort
+  /** 记忆根写锁：与 GUI 平面共用同一把（同进程两处不互相抢锁）；缺省自建。 */
+  lock?: RootLock
+}
+
+/**
+ * serve 模式的核心组装：记忆根写锁缺省自建，给了就用给的那把。
+ * bin 的 serve 分支建一把锁同时交给 core 与 GUI 平面，同一进程里两处写不再各开一把锁库连接。
+ */
+export async function createServeCore(options: {
+  root: string
+  client: string
+  log: MemoryLogger
+  lock?: RootLock
+}): Promise<MemoryCore> {
+  return createMemoryCore({
+    root: options.root,
+    client: options.client,
+    log: options.log,
+    ...(options.lock === undefined ? {} : { lock: options.lock }),
+  })
 }
 
 /**
@@ -334,7 +355,12 @@ export function parseGuiEnv(env: NodeJS.ProcessEnv): {
 /** `plastic-mcp serve` 的进程入口：起 core + 工具 + HTTP 服务，SIGINT/SIGTERM 时先停服务再关 core。 */
 export async function runServeCli(argv: string[], config: ServeCliConfig, log: MemoryLogger): Promise<void> {
   const args = parseServeArgs(argv)
-  const core = await createMemoryCore({ root: config.root, client: config.client, log })
+  const core = await createServeCore({
+    root: config.root,
+    client: config.client,
+    log,
+    ...(config.lock === undefined ? {} : { lock: config.lock }),
+  })
   const tools = createMemoryTools(core, {
     client: config.client,
     ...(config.project === undefined ? {} : { project: config.project }),

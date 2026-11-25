@@ -1,16 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
+import { memoryRecordSchema } from '@plastic/core/record-schema.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import type { GuiPlanePort } from './gui-http.ts'
 import {
-  DEFAULT_PORT, DEFAULT_WEBUI_DIR, LOOPBACK_HOST, parseGuiEnv, parseServeArgs, startMemoryServer, type MemoryHttpServer,
+  DEFAULT_PORT, DEFAULT_WEBUI_DIR, LOOPBACK_HOST, createServeCore, parseGuiEnv, parseServeArgs, startMemoryServer, type MemoryHttpServer,
 } from './serve.ts'
 import { createMemoryTools } from './tools.ts'
 import { baseEnv, callJson } from './spec-helpers.ts'
@@ -323,6 +325,29 @@ describe('HTTP 模式（serve）', () => {
       await plain.server.close()
       await plain.core.close()
       await rm(plain.root, { recursive: true, force: true })
+    }
+  })
+
+  it('serve 的核心用注入的锁：与 GUI 平面共用同一把，同进程不抢锁', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pm-mcp-lock-'))
+    const calls: number[] = []
+    const stub: RootLock = { run: async <T>(fn: () => Promise<T>): Promise<T> => { calls.push(1); return fn() } }
+    const core = await createServeCore({ root, client: 'http-spec', log: silentLog, lock: stub })
+    try {
+      const stamp = Date.now()
+      await core.store.create(memoryRecordSchema.parse({
+        id: 'mem_lock_injected', name: '注入锁的条目', type: 'knowledge', scope: 'global', tags: [],
+        content: '正文', summary: '正文',
+        source: { sessionId: 'http-spec', eventRange: [0, 0], sourceMode: 'user-explicit' },
+        createdAt: stamp, updatedAt: stamp, lastConfirmedAt: stamp, lastRecalledAt: null,
+        recallCount: 0, status: 'active', confidence: 0.9,
+      }))
+      // 写走的是注入的锁：自建的锁库没有出现
+      expect(calls.length).toBeGreaterThan(0)
+      await expect(stat(join(root, '.state', 'lock', 'write-lock.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await core.close()
+      await rm(root, { recursive: true, force: true })
     }
   })
 

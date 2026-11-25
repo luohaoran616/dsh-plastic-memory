@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { readFile as readText, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { formatIndexLine } from '@plastic/core/index-line.ts'
+import type { RootLock } from '@plastic/core/root-lock.ts'
 import { agentsMdPath, createAgentsMdWriter } from '@plastic/core/storage/agents-md.ts'
 import { FileTable } from '@plastic/core/storage/file-table.ts'
 import { createRootLock } from '@plastic/core/storage/root-lock.ts'
@@ -44,6 +45,8 @@ export interface GuiPlaneOptions {
   instructions?: ReadInstructions
   log?: MemoryLogger
   now?: () => number
+  /** 记忆根写锁：注入则用注入的那把，缺省自建一把。同一进程里 core 与平面共用一个记忆根时注入同一把。 */
+  lock?: RootLock
 }
 
 /** 无宿主装配的平面：/memory 命令入口、视图文件读取、记忆根内文件的读取与打开、释放。 */
@@ -115,7 +118,7 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
   const llmOf = () => options.llm ?? null
 
   // 记忆根写锁：这个装配实例一把，注入文件表、侧表、待决账本、视图写入器（同实例内按计数嵌套）
-  const rootLock = createRootLock({ root: memoryRoot, log })
+  const rootLock = options.lock ?? createRootLock({ root: memoryRoot, log })
   // 侧表（快照、待决账本、扫描缓存、建议忽略、体检记录、自动体检设置）住 <memoryRoot>/.state/。
   // 探针：独立面够不着宿主 storageDomain，不写「没有旧 KV」的结清标记，宿主下次再探
   const sidecar = new SidecarStore({

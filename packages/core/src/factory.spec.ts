@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { MemoryRecord } from './record-schema.ts'
+import type { RootLock } from './root-lock.ts'
 import type { MemoryLogger } from './storage/table.ts'
 import { STATE_DIR } from './storage/paths.ts'
 import { createMemoryCore } from './factory.ts'
@@ -149,6 +150,21 @@ describe('createMemoryCore', () => {
     const core = await createMemoryCore({ root, client: 'zcode', log: silentLog })
     try {
       expect(core.client).toBe('zcode')
+    } finally {
+      await core.close()
+    }
+  })
+
+  it('注入的锁被写路径使用：给了锁就不再自建一把', async () => {
+    // 同一进程里 core 与别的装配共用一把锁时，注入的那把就是唯一的写锁
+    const calls: number[] = []
+    const stub: RootLock = { run: async <T>(fn: () => Promise<T>): Promise<T> => { calls.push(1); return fn() } }
+    const core = await createMemoryCore({ root, client: 'test-client', log: silentLog, lock: stub })
+    try {
+      await core.store.create(record({ name: '注入锁的条目' }))
+      expect(calls.length).toBeGreaterThan(0)
+      // 写走的是注入的锁：自建的锁库没有出现
+      await expect(stat(join(root, STATE_DIR, 'lock', 'write-lock.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await core.close()
     }

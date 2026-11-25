@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { withinValidity } from './record-freshness.ts'
+import type { RootLock } from './root-lock.ts'
 import { MemoryStore, type QueryScope } from './store.ts'
 import { FileTable } from './storage/file-table.ts'
 import { resolveMemoryRoot } from './storage/paths.ts'
@@ -26,6 +27,8 @@ export interface MemoryCoreOptions {
   client: string
   /** 缺省回退 console，与 MemoryStore / FileTable 构造函数的既有缺省一致。 */
   log?: MemoryLogger
+  /** 记忆根写锁：注入则用注入的那把，缺省自建一把。同一进程里多处共用一个记忆根时注入同一把。 */
+  lock?: RootLock
 }
 
 /** 一次检索的输入。作用域由调用方定好（MCP 把 project / cwd 映射成这里的参数），工厂不再猜。 */
@@ -96,7 +99,7 @@ export async function createMemoryCore(opts: MemoryCoreOptions): Promise<MemoryC
   const log = opts.log ?? console
   const root = resolveMemoryRoot(opts.root)
   // 一个进程实例一把，注入文件表与侧表：同实例内按持有计数嵌套，与其他进程（DSH 插件、另一个 MCP 进程）经锁库互斥
-  const lock = createRootLock({ root, log })
+  const lock = opts.lock ?? createRootLock({ root, log })
   const sidecar = new SidecarStore({
     root,
     lock,
