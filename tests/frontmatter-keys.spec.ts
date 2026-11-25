@@ -29,6 +29,7 @@ const fullRecord: MemoryRecord = {
   createdAt: 1, updatedAt: 2, lastConfirmedAt: 3, lastRecalledAt: 4, recallCount: 5,
   validFrom: 6, validTo: 7, status: 'active', confidence: 0.9,
   supersedes: ['mem_old'], globalCandidate: true, deletedAt: 8,
+  'needs-promote-review': true, 'imported-from': 'zcode:session-1',
   delegation: { sessionId: 'child', depth: 2, parentSessionId: 'mid', rootSessionId: 'main', reviewed: { by: 'main', at: 9 } },
 }
 

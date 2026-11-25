@@ -28,7 +28,7 @@ const HAND_WRITTEN_CONFIDENCE = 0.9
 const FILE_KEY_ORDER = [
   'id', 'name', 'type', 'tags', 'status', 'confidence', 'source',
   'createdAt', 'updatedAt', 'lastConfirmedAt', 'deletedAt', 'validFrom', 'validTo',
-  'supersedes', 'summary', 'globalCandidate', 'delegation', 'digest',
+  'supersedes', 'summary', 'globalCandidate', 'needs-promote-review', 'imported-from', 'delegation', 'digest',
 ] as const
 const KNOWN_FILE_KEYS = new Set<string>(FILE_KEY_ORDER)
 

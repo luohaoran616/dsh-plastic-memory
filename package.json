@@ -97,6 +97,7 @@
     }
   },
   "scripts": {
+    "mcp": "node packages/mcp/src/bin.ts",
     "build": "pnpm --filter @plastic/core build && rm -rf lib && tsc -p tsconfig.build.json && node scripts/build-client.ts",
     "host:smoke": "bash scripts/host-smoke.sh",
     "test": "vitest run",

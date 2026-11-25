@@ -1,0 +1,39 @@
+{
+  "name": "@plastic/mcp",
+  "version": "0.0.0",
+  "description": "MCP server exposing the shared plastic-memory store to ZCode, Antigravity and the standalone WebUI",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "main": "./src/tools.ts",
+  "types": "./src/tools.ts",
+  "exports": {
+    ".": "./src/tools.ts",
+    "./*": "./src/*"
+  },
+  "bin": {
+    "plastic-mcp": "./lib/bin.js"
+  },
+  "publishConfig": {
+    "main": "./lib/tools.js",
+    "exports": {
+      ".": "./lib/tools.js",
+      "./*": "./lib/*"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@plastic/core": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}

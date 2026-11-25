@@ -27,6 +27,11 @@ export const memoryRecordSchema = z.object({
   supersedes: z.array(z.string()).optional(),
   /** 模型自主判断"该全局"但无权直写 global：落 workspace 时打此标记，治理时作为提升候选。 */
   globalCandidate: z.boolean().optional(),
+  /** MCP 端 `project: "global"` 的落法（D3）：记录写进解析出的 workspace 作用域并打此标记，不是正式全局记忆；
+   *  人在 WebUI 确认提升后才写进全局。kebab-case 就是文件键（与 FILE_KEY_ORDER 一一对应，见 storage/frontmatter.ts）。 */
+  'needs-promote-review': z.boolean().optional(),
+  /** ZCode 导入溯源（D7）：`imported-from: zcode:<originSessionId>`，导入幂等按它判重。 */
+  'imported-from': z.string().optional(),
   /**
    * 子 agent 写入的委派信息（宿主填）。缺省 = 主会话或手建。顶层键：旧版插件把它当未知键原样保留，嵌进 source 会在维护回写时丢掉。
    * 创建者四个字段写入后不再改，升档只加 reviewed。
