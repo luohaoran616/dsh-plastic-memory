@@ -128,6 +128,9 @@ importers:
       '@plastic/core':
         specifier: workspace:*
         version: link:../core
+      dsh-plastic-memory:
+        specifier: workspace:*
+        version: link:../..
       zod:
         specifier: 4.4.3
         version: 4.4.3

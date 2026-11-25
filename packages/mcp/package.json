@@ -29,6 +29,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "@plastic/core": "workspace:*",
+    "dsh-plastic-memory": "workspace:*",
     "zod": "4.4.3"
   },
   "scripts": {

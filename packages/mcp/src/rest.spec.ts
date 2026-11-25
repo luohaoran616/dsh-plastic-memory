@@ -647,7 +647,8 @@ describe('REST 管理面（Task 5）', () => {
     const root = await mkdtemp(join(tmpdir(), 'pm-mcp-serve-bin-'))
     const child = spawn(process.execPath, [BIN, 'serve', '--port', '0', '--token', 'cli-secret'], {
       cwd: PACKAGE_ROOT,
-      env: { ...baseEnv, PLASTIC_MEMORY_ROOT: root, PLASTIC_CLIENT: 'zcode' },
+      // serve 模式现在还必须给 PLASTIC_PROJECT（D7：独立页面的固定项目），项目目录不必存在
+      env: { ...baseEnv, PLASTIC_MEMORY_ROOT: root, PLASTIC_CLIENT: 'zcode', PLASTIC_PROJECT: root },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -678,6 +679,8 @@ describe('REST 管理面（Task 5）', () => {
       expect(await exit).toBe(0)
       expect(stdout).toBe('')
       expect(stderr).toContain('127.0.0.1')
+      // D8：自动体检调度器是开是关必须留在启动日志里
+      expect(stderr).toMatch(/自动体检调度器(已开启|未开启)/)
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
       await rm(root, { recursive: true, force: true })

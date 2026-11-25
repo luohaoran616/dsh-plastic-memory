@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
-import { extname, join, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -10,6 +10,7 @@ import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
 import { API_PREFIX, createRestHandler, sendError, sendJson } from './rest.ts'
+import { handleGuiRequest, type GuiPlanePort } from './gui-http.ts'
 
 /**
  * `plastic-mcp serve`：HTTP 模式。同一个 node:http 服务暴露三样（D4）——
@@ -24,6 +25,9 @@ const pkg = createRequire(import.meta.url)('../package.json') as { version: stri
 
 /** 唯一允许的监听地址：本机回环，不做 0.0.0.0。 */
 export const LOOPBACK_HOST = '127.0.0.1'
+
+/** 独立页面接口的路径前缀（D4：全部挂在 /api 下）。 */
+const GUI_PATH = `${API_PREFIX}/gui`
 
 /** D4 的缺省端口。 */
 export const DEFAULT_PORT = 7788
@@ -73,6 +77,8 @@ export interface MemoryHttpServerOptions {
   project?: string
   /** 相对路径的解析基准与缺省项目；缺省 process.cwd。 */
   cwd?: () => string
+  /** 独立页面的无宿主平面；有它时 /api/gui/* 由 handleGuiRequest 处理，关闭服务时一并释放。 */
+  gui?: GuiPlanePort
   log?: MemoryLogger
 }
 
@@ -210,7 +216,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, tools: Memor
 }
 
 export async function startMemoryServer(options: MemoryHttpServerOptions): Promise<MemoryHttpServer> {
-  const { core, tools, token } = options
+  const { core, tools, token, gui } = options
   const log = options.log
   const rest = createRestHandler({
     core, tools, log,
@@ -218,12 +224,17 @@ export async function startMemoryServer(options: MemoryHttpServerOptions): Promi
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
   })
   const staticRoot = staticRootOf(options.webuiDir ?? DEFAULT_WEBUI_DIR)
+  // 鉴权之后才轮到界面接口；来源比对用服务自己的地址，监听之后才知道端口
+  let allowedOrigin = ''
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`)
     if (token !== undefined && requiresAuth(url.pathname) && !authorized(req, token)) {
       sendError(res, 401, '未授权：需要 Authorization: Bearer <token>', { 'www-authenticate': 'Bearer' })
       return
+    }
+    if (gui !== undefined && (url.pathname === GUI_PATH || url.pathname.startsWith(`${GUI_PATH}/`))) {
+      if (await handleGuiRequest(gui, req, res, url, allowedOrigin)) return
     }
     if (url.pathname === '/mcp') {
       await handleMcp(req, res, tools, log)
@@ -260,13 +271,19 @@ export async function startMemoryServer(options: MemoryHttpServerOptions): Promi
     server.close()
     throw new Error('HTTP 服务没有拿到监听地址')
   }
+  allowedOrigin = `http://${LOOPBACK_HOST}:${address.port}`
 
   const close = async (): Promise<void> => {
     const stopped = new Promise<void>((resolvePromise, reject) => {
       server.close(error => (error === undefined ? resolvePromise() : reject(error)))
     })
     server.closeAllConnections()
-    await stopped
+    try {
+      await stopped
+    } finally {
+      // 先停服务再释放平面：释放会写视图文件，不该再和请求抢
+      await gui?.dispose()
+    }
   }
   return { host: LOOPBACK_HOST, port: address.port, url: `http://${LOOPBACK_HOST}:${address.port}`, server, close }
 }
@@ -276,6 +293,50 @@ export interface ServeCliConfig {
   root: string
   client: string
   project?: string
+  /** bin 装配好的无宿主平面；stdio 模式不涉及。 */
+  gui?: GuiPlanePort
+}
+
+/**
+ * serve 模式的界面与模型线路配置，全部来自环境变量（spec D7、D8）。
+ * 项目必填；模型线路两个变量同给同缺，缺省没有模型；自动体检缺省不开（D8：常驻服务无人看着时不花额度）。
+ */
+export function parseGuiEnv(env: NodeJS.ProcessEnv): {
+  project: string
+  llm: { baseUrl: string; model: string; apiKey?: string; maxTokens?: number } | undefined
+  autoCheckup: boolean
+} {
+  const project = env.PLASTIC_PROJECT?.trim() ?? ''
+  if (project === '') throw new Error('缺少环境变量 PLASTIC_PROJECT（serve 模式的固定项目绝对路径）')
+  if (!isAbsolute(project)) throw new Error(`PLASTIC_PROJECT 必须是绝对路径：${project}`)
+
+  // 模型线路：地址与模型同给同缺；只给一个时拼不出可用的调用，直接报错而不是留半套
+  const baseUrl = env.PLASTIC_LLM_BASE_URL?.trim() ?? ''
+  const model = env.PLASTIC_LLM_MODEL?.trim() ?? ''
+  if ((baseUrl === '') !== (model === '')) {
+    throw new Error('PLASTIC_LLM_BASE_URL 与 PLASTIC_LLM_MODEL 必须同时给或同时不给')
+  }
+  const maxTokensRaw = env.PLASTIC_LLM_MAX_TOKENS?.trim() ?? ''
+  let maxTokens: number | undefined
+  if (maxTokensRaw !== '') {
+    const value = Number(maxTokensRaw)
+    if (!Number.isInteger(value) || value <= 0) throw new Error(`PLASTIC_LLM_MAX_TOKENS 必须是正整数：${maxTokensRaw}`)
+    maxTokens = value
+  }
+  const apiKey = env.PLASTIC_LLM_API_KEY?.trim() ?? ''
+
+  return {
+    project,
+    llm: baseUrl === ''
+      ? undefined
+      : {
+          baseUrl,
+          model,
+          ...(apiKey === '' ? {} : { apiKey }),
+          ...(maxTokens === undefined ? {} : { maxTokens }),
+        },
+    autoCheckup: env.PLASTIC_AUTO_CHECKUP === '1',
+  }
 }
 
 /** `plastic-mcp serve` 的进程入口：起 core + 工具 + HTTP 服务，SIGINT/SIGTERM 时先停服务再关 core。 */
@@ -291,6 +352,7 @@ export async function runServeCli(argv: string[], config: ServeCliConfig, log: M
     server = await startMemoryServer({
       core, tools, port: args.port, log,
       ...(config.project === undefined ? {} : { project: config.project }),
+      ...(config.gui === undefined ? {} : { gui: config.gui }),
       ...(args.token === undefined ? {} : { token: args.token }),
     })
   } catch (error) {

@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createMemoryCore } from '@plastic/core/factory.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
+import type { GuiPlanePort } from './gui-http.ts'
 
 /**
  * plastic-mcp 的进程入口：缺省 stdio 模式（ZCode、Antigravity 各起一个进程实例，与 DSH 插件同开一个记忆根）。
@@ -96,6 +97,21 @@ interface TestHoldLockModule {
  *  tsconfig.build.json 的 exclude 就失效了（发布的 lib/ 不该带这个「设了变量就永远持锁」的模块）。 */
 const TEST_HOLD_LOCK_MODULE = './test-hold-lock.ts'
 
+/** 根包编译产物里的两个无宿主入口：serve 分支才动态加载，stdio 模式不为独立页面背依赖。 */
+const GUI_PLANE_MODULE = 'dsh-plastic-memory/lib/standalone/plane.js'
+const GUI_LLM_MODULE = 'dsh-plastic-memory/lib/standalone/llm.js'
+
+/**
+ * 两个入口的类型（只作类型引用，运行时不加载）：动态 import 的说明符是变量，类型检查看不出返回值的形状，
+ * 用这两个类型把返回值收回来，`gui` 的赋值才是真的结构检查——Task 3 的 GuiPlane 与本包的 GuiPlanePort 一致由 tsc 证明。
+ * 类型取自根包的编译产物，所以要先在仓库根目录跑过 pnpm build。
+ */
+type GuiPlaneModule = typeof import('dsh-plastic-memory/lib/standalone/plane.js')
+type GuiLlmModule = typeof import('dsh-plastic-memory/lib/standalone/llm.js')
+
+/** 根包没构建或不在此工作区时两个入口都解析不到：提示先构建，而不是抛裸的模块错误。 */
+const GUI_BUILD_HINT = '独立页面需要根包的构建产物：先在仓库根目录跑 pnpm build'
+
 /**
  * 测试专用钩子的接线（concurrency.spec 的「持锁崩溃」用例）：只在 PLASTIC_MCP_TEST_HOLD_LOCK 存在时才动态加载
  * ./test-hold-lock.ts。正常启动路径不为这个测试装置背 fs/timers/root-lock 的 import。
@@ -122,8 +138,21 @@ async function main(argv: string[]): Promise<void> {
     case 'serve': {
       const config = resolveConfig()
       // 动态加载：stdio 模式不为 HTTP / 静态托管背 node:fs 与 HTTP 路由的依赖
-      const { runServeCli } = await import('./serve.ts')
-      await runServeCli(argv.slice(1), config, stderrLog)
+      const { parseGuiEnv, runServeCli } = await import('./serve.ts')
+      // 先读环境变量：项目与模型线路配错就在开门之前退出，不留下半启动的服务
+      const guiEnv = parseGuiEnv(process.env)
+      const { createGuiPlane } = await import(GUI_PLANE_MODULE).catch(() => fail(GUI_BUILD_HINT)) as GuiPlaneModule
+      const { createAnthropicLlm } = await import(GUI_LLM_MODULE).catch(() => fail(GUI_BUILD_HINT)) as GuiLlmModule
+      // 模型线路（D7）：两个变量都不给时没有模型，命令里的模型动作按既有路径回 llm-unavailable
+      const llm = guiEnv.llm === undefined ? null : createAnthropicLlm(guiEnv.llm)
+      // 直接赋给 GuiPlanePort：类型检查据此证明 Task 3 的 GuiPlane 与本包的结构一致
+      const gui: GuiPlanePort = await createGuiPlane({
+        memoryRoot: config.root, project: guiEnv.project, llm,
+        autoCheckup: guiEnv.autoCheckup, log: stderrLog,
+      })
+      // D8：自动体检要在后台花模型额度，是开是关必须留在启动日志里
+      stderrLog.info(`自动体检调度器${guiEnv.autoCheckup ? '已开启（PLASTIC_AUTO_CHECKUP=1）' : '未开启（设 PLASTIC_AUTO_CHECKUP=1 才跑）'}`)
+      await runServeCli(argv.slice(1), { ...config, gui }, stderrLog)
       return
     }
     default:
