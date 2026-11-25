@@ -107,7 +107,7 @@ dsh plugin --profile web add dsh-plastic-memory
 
 ## 跨端接入（MCP Server 与独立界面）
 
-记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库；并自带一个不依赖 DeepSeek Harness 的 Web 面板，用的是插件里那版原版记忆页。
+记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库。本仓库也自带一个不依赖 DeepSeek Harness 的 Web 面板，用的是插件里那版原版记忆页。
 
 ### MCP Server
 
@@ -120,7 +120,9 @@ PLASTIC_MEMORY_ROOT=~/.dsh/memories PLASTIC_PROJECT=/home/me/projects/alpha \
   node packages/mcp/lib/bin.js serve
 ```
 
-环境变量：`PLASTIC_MEMORY_ROOT`（记忆根绝对路径，必填）、`PLASTIC_CLIENT`（客户端标识，写入记忆来源）、`PLASTIC_PROJECT`（客户端侧写死的项目映射，`project` 入参缺省时使用）。serve 模式要求 `PLASTIC_PROJECT` 必填且是绝对路径，缺了服务启动即退出。MCP 端只提供增查删改。体检处理与全局提升审核在 Web 面板完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+三个环境变量决定 MCP 端的行为。`PLASTIC_MEMORY_ROOT` 给记忆根的绝对路径，必填。`PLASTIC_CLIENT` 给客户端标识，它会写进记忆来源，缺省是 `unknown`。`PLASTIC_PROJECT` 给各端配置里写死的项目映射，命令的 `project` 入参缺省时用它。serve 模式要求 `PLASTIC_PROJECT` 必填且是绝对路径，缺了服务启动即退出。
+
+MCP 端只提供增查删改。体检处理与全局提升审核在 Web 面板完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
 
 ### Web 面板
 
