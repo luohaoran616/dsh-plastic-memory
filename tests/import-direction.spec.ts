@@ -30,8 +30,9 @@ const MEMORY_MODULES = new Set([
   'pipeline', 'store', 'snapshot', 'snapshot-message', 'runtime', 'type-registry', 'evidence-guidance', 'search/ranking', 'search/coverage',
   'search/window',
 ])
-// 接线层：index.ts、交给 ctx.storageDomain.open 的域定义、宿主会话适配器（后两个只被 index.ts 用）
-const ENTRY_MODULES = new Set(['index', 'domain-spec', 'cordis-host-session'])
+// 接线层：index.ts、交给 ctx.storageDomain.open 的域定义、宿主会话适配器（后两个只被 index.ts 用），
+// 以及 core 的组装工厂（DSH 插件之外的入口都经它接线）
+const ENTRY_MODULES = new Set(['index', 'domain-spec', 'cordis-host-session', 'factory'])
 
 const FRAMEWORK_PREFIX = '@deepseek-ai/'
 
@@ -42,14 +43,16 @@ const ALLOWED_EXCEPTIONS: ReadonlyArray<{ from: string; to: string; reason: stri
 ]
 
 function layerOf(mod: string): LayerName | undefined {
-  if (LEAF_MODULES.has(mod)) return 'leaf'
-  if (MEMORY_MODULES.has(mod)) return 'memory'
-  if (ENTRY_MODULES.has(mod)) return 'entry'
-  if (/^storage\/[^/]+$/.test(mod)) return 'storage'
-  if (/^governance\/[^/]+$/.test(mod)) return 'governance'
-  if (/^gui\/[^/]+$/.test(mod)) return 'gui'
-  if (/^tools\/[^/]+-tool$/.test(mod)) return 'binding'
-  if (/^tools\/[^/]+$/.test(mod)) return 'executor'
+  // core 的用例与实现同目录（vitest include: src/**/*.spec.ts）：用例与被测模块同层，按去掉 .spec 的名字归层
+  const name = mod.endsWith('.spec') ? mod.slice(0, -'.spec'.length) : mod
+  if (LEAF_MODULES.has(name)) return 'leaf'
+  if (MEMORY_MODULES.has(name)) return 'memory'
+  if (ENTRY_MODULES.has(name)) return 'entry'
+  if (/^storage\/[^/]+$/.test(name)) return 'storage'
+  if (/^governance\/[^/]+$/.test(name)) return 'governance'
+  if (/^gui\/[^/]+$/.test(name)) return 'gui'
+  if (/^tools\/[^/]+-tool$/.test(name)) return 'binding'
+  if (/^tools\/[^/]+$/.test(name)) return 'executor'
   return undefined
 }
 
