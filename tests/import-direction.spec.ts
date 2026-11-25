@@ -48,6 +48,9 @@ function layerOf(mod: string): LayerName | undefined {
   if (LEAF_MODULES.has(name)) return 'leaf'
   if (MEMORY_MODULES.has(name)) return 'memory'
   if (ENTRY_MODULES.has(name)) return 'entry'
+  // 独立装配（src/standalone/*）：与 index.ts 并列的装配入口，同属接线层——可导入 gui/governance/core 等业务层；
+  // 反向导入（业务层 import standalone/*）按「每层只 import 本层及更低层」自动算违规
+  if (/^standalone\/[^/]+$/.test(name)) return 'entry'
   if (/^storage\/[^/]+$/.test(name)) return 'storage'
   if (/^governance\/[^/]+$/.test(name)) return 'governance'
   if (/^gui\/[^/]+$/.test(name)) return 'gui'
