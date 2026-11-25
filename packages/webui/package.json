@@ -15,15 +15,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "diff": "^9.0.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@plastic/core": "workspace:*",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^26.2.0",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "5.2.0",
+    "dsh-plastic-memory": "workspace:*",
+    "jsdom": "29.1.1",
     "typescript": "5.9.3",
     "vite": "7.3.6",
     "vitest": "3.2.7"
