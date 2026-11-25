@@ -87,6 +87,15 @@ async function runStdio(): Promise<void> {
   await server.connect(new StdioServerTransport())
 }
 
+/** test-hold-lock.ts 的形状。不能写成 `typeof import('./test-hold-lock.ts')`：类型引用同样会把该文件拉进编译。 */
+interface TestHoldLockModule {
+  withTestHoldLock: (tools: MemoryTools, options: { root: string; dir: string; log: MemoryLogger }) => MemoryTools
+}
+
+/** 测试钩子模块的说明符。不写字面量：字面量动态 import 会让 tsc 把 test-hold-lock.ts 重新拉进编译，
+ *  tsconfig.build.json 的 exclude 就失效了（发布的 lib/ 不该带这个「设了变量就永远持锁」的模块）。 */
+const TEST_HOLD_LOCK_MODULE = './test-hold-lock.ts'
+
 /**
  * 测试专用钩子的接线（concurrency.spec 的「持锁崩溃」用例）：只在 PLASTIC_MCP_TEST_HOLD_LOCK 存在时才动态加载
  * ./test-hold-lock.ts。正常启动路径不为这个测试装置背 fs/timers/root-lock 的 import。
@@ -94,7 +103,7 @@ async function runStdio(): Promise<void> {
 async function withTestHoldLockIfRequested(tools: MemoryTools, root: string): Promise<MemoryTools> {
   const dir = process.env.PLASTIC_MCP_TEST_HOLD_LOCK?.trim() ?? ''
   if (dir === '') return tools
-  const { withTestHoldLock } = await import('./test-hold-lock.ts')
+  const { withTestHoldLock } = await import(TEST_HOLD_LOCK_MODULE) as TestHoldLockModule
   return withTestHoldLock(tools, { root, dir, log: stderrLog })
 }
 

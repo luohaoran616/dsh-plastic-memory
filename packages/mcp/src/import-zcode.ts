@@ -15,7 +15,9 @@ import { deriveSummary, newMemoryId } from './tools.ts'
  * 所以只借 core 的 `splitFrontmatter` 做「切围栏 + YAML 解析 + 取正文」，字段自己取，不喂 `decodeRecord`。
  *
  * 幂等键（D7）：目标库里已存在同名且 `imported-from` 以 zcode 开头的记录就跳过。映射文件（JSON：
- * hash 目录名 → 项目绝对路径，读入时经 `resolve` 规范化）可缺省；缺省或未列出的项目按 global 作用域导入，报告里标注。
+ * hash 目录名 → 项目绝对路径，读入时经 `resolve` 规范化）由人工维护：`--apply` 必须提供它，未列出的项目
+ * 一条都不导入（计 `unmapped` 并在 warnings 点名）——ZCode 的记忆天然是项目级的，没有工作区路径就落不了
+ * workspace 作用域，而 global 直写被 Global Constraints 禁止。dry-run 不需要它，未映射项目照常出现在报告里并告警。
  */
 
 /** D7 的已知值映射表：ZCode 的 `metadata.type` → plastic 的类型名。`user` 与 `feedback` 都是用户对做法/分工的要求，
@@ -40,9 +42,10 @@ const ZCODE_IMPORT_PREFIX = 'zcode'
 const PROJECTS_DIR = 'projects'
 const MEMORY_DIR = 'memory'
 
-export const IMPORT_ZCODE_USAGE = 'plastic-mcp import-zcode --src <dir> --root <root> [--map <file>] [--report <file>] [--apply]'
+export const IMPORT_ZCODE_USAGE = 'plastic-mcp import-zcode --src <dir> --root <root> [--map <file>] [--report <file>] [--apply]\n--apply 必须提供 --map（项目 hash → 路径映射）'
 
-export type ImportSkipReason = 'exists' | 'duplicate-in-source' | 'parse-error'
+/** 跳过原因：目标库已有同名导入、源内同名、解析失败，以及 `--apply` 时项目不在映射文件里（unmapped）。 */
+export type ImportSkipReason = 'exists' | 'duplicate-in-source' | 'parse-error' | 'unmapped'
 
 export interface ZcodeImportEntry {
   /** 相对 `--src` 的源文件路径。 */
@@ -65,7 +68,8 @@ export interface ZcodeImportProject {
   /** 项目 hash 目录名（`projects/` 下的一级目录）。 */
   hash: string
   files: number
-  scope: 'global' | 'workspace'
+  /** workspace 已映射；global 是 dry-run 对未映射项目的预告口径；null 表示 apply 下因未映射被跳过。 */
+  scope: 'global' | 'workspace' | null
   workspacePath: string | null
   note: string
 }
@@ -101,7 +105,7 @@ export interface ImportZcodeOptions {
   src: string
   /** 目标 plastic 记忆根。 */
   root: string
-  /** 项目 hash → 真实路径的映射文件（JSON）；缺省时所有项目按 global 处理。 */
+  /** 项目 hash → 真实路径的映射文件（JSON）；`--apply` 必填，dry-run 可缺省（缺省时报告按 global 预告）。 */
   mapFile?: string
   /** 缺省 dry-run：只出报告、零写入。 */
   apply?: boolean
@@ -165,6 +169,12 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
   const mapFile = options.mapFile === undefined ? undefined : resolve(options.mapFile)
   const reportFile = options.reportFile === undefined ? undefined : resolve(options.reportFile)
 
+  // Global Constraints：MCP 端没有 GUI 确认流，禁止全局直写。ZCode 的记忆天然属于项目，没有映射就无法确定
+  // 工作区路径，只能落 global；所以 apply 必须由人工维护的映射文件给出落点，缺了就在开库前报错退出。
+  if (apply && mapFile === undefined) {
+    throw new Error(`--apply 需要 --map 提供项目 hash → 路径映射（未映射的项目不能写 global）\n用法：${IMPORT_ZCODE_USAGE}`)
+  }
+
   await assertLibrary(src)
   const projectMap = mapFile === undefined ? {} : await loadMapFile(mapFile)
   const projects = await scanProjects(src)
@@ -182,7 +192,7 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
       wouldImport: 0,
       imported: 0,
       skipped: 0,
-      skippedByReason: { exists: 0, 'duplicate-in-source': 0, 'parse-error': 0 },
+      skippedByReason: { exists: 0, 'duplicate-in-source': 0, 'parse-error': 0, unmapped: 0 },
     }
 
     const skip = (entry: ZcodeImportEntry, reason: ImportSkipReason): void => {
@@ -195,6 +205,18 @@ export async function importZcode(options: ImportZcodeOptions): Promise<ZcodeImp
 
     for (const project of projects) {
       const workspacePath = projectMap[project.hash]
+      if (workspacePath === undefined && apply) {
+        // 没有工作区路径就落不了 workspace 作用域；落 global 是被 Global Constraints 禁止的全局直写。
+        // D7 的映射关系由人工维护，所以「没映射」只能是「不导入」：逐条记账，报告里点名跳过。
+        for (const file of project.files) {
+          summary.scanned += 1
+          skip({
+            source: file.relPath, title: null, zcodeType: null, type: null,
+            scope: null, workspacePath: null, importedFrom: null, action: 'skipped',
+          }, 'unmapped')
+        }
+        continue
+      }
       const scope = workspacePath === undefined ? 'global' as const : 'workspace' as const
       for (const file of project.files) {
         summary.scanned += 1
@@ -412,13 +434,13 @@ function buildReport(input: {
 }): ZcodeImportReport {
   const projects: ZcodeImportProject[] = input.projects.map(project => {
     const workspacePath = input.projectMap[project.hash]
-    return {
-      hash: project.hash,
-      files: project.files.length,
-      scope: workspacePath === undefined ? 'global' : 'workspace',
-      workspacePath: workspacePath ?? null,
-      note: workspacePath === undefined ? '未映射，按 global 处理' : '已映射',
+    if (workspacePath !== undefined) {
+      return { hash: project.hash, files: project.files.length, scope: 'workspace', workspacePath, note: '已映射' }
     }
+    // dry-run 只做预告，未映射项目仍按 global 口径出现在报告里；apply 下这些条目已逐条按 unmapped 跳过
+    return input.mode === 'apply'
+      ? { hash: project.hash, files: project.files.length, scope: null, workspacePath: null, note: '未映射，跳过导入' }
+      : { hash: project.hash, files: project.files.length, scope: 'global', workspacePath: null, note: '未映射，按 global 处理' }
   })
   const unknownTypes = [...input.unknownTypes.entries()]
     .map(([zcodeType, titles]) => ({ zcodeType, mappedTo: UNKNOWN_ZCODE_TYPE, titles }))
@@ -430,8 +452,10 @@ function buildReport(input: {
     ...(input.duplicateTitles.length === 0 ? [] : [
       `源内同名被跳过（${input.duplicateTitles.length} 条，同名文件已有一份进入本轮计划/已导入）：${input.duplicateTitles.join('、')}`,
     ]),
-    ...projects.filter(project => project.files > 0 && project.scope === 'global')
-      .map(project => `项目 ${project.hash} 未在映射文件中，按 global 处理（${project.files} 条）`),
+    ...projects.filter(project => project.files > 0 && project.scope !== 'workspace')
+      .map(project => project.scope === null
+        ? `项目 ${project.hash} 未在映射文件中，跳过导入（${project.files} 条）`
+        : `项目 ${project.hash} 未在映射文件中，按 global 处理（${project.files} 条）`),
   ]
 
   return {

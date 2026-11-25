@@ -33,8 +33,12 @@ interface Fixture {
   src: string
   /** 目标 plastic 记忆根（--root）。 */
   root: string
+  /** 两个项目都映射的映射文件：apply 用例用它（未映射项目不会被导入）。 */
   mapFile: string
+  /** 只映射 alpha 的映射文件：dry-run 与「未映射项目跳过」用例用它。 */
+  partialMapFile: string
   workspaceAlpha: string
+  workspaceBeta: string
 }
 
 async function fixture(): Promise<Fixture> {
@@ -43,7 +47,9 @@ async function fixture(): Promise<Fixture> {
   const src = join(base, 'zcode-memories')
   const root = join(base, 'plastic-root')
   const workspaceAlpha = join(base, 'projects', 'alpha')
+  const workspaceBeta = join(base, 'projects', 'beta')
   const mapFile = join(base, 'project-map.json')
+  const partialMapFile = join(base, 'project-map-alpha-only.json')
   const alphaDir = join(src, 'projects', ALPHA, 'memory')
   const betaDir = join(src, 'projects', BETA, 'memory')
   await mkdir(alphaDir, { recursive: true })
@@ -117,7 +123,7 @@ async function fixture(): Promise<Fixture> {
     '',
   ].join('\n'))
 
-  // beta 不在映射文件里：按 global 处理
+  // beta 只在 partialMapFile 里缺席：dry-run 按 global 预告，apply 下被跳过
   await writeFile(join(betaDir, 'feedback-writing-style.md'), [
     '---',
     'name: feedback-writing-style',
@@ -145,16 +151,18 @@ async function fixture(): Promise<Fixture> {
     '',
   ].join('\n'))
 
-  await writeFile(mapFile, JSON.stringify({ [ALPHA]: workspaceAlpha }, null, 2))
-  return { base, src, root, mapFile, workspaceAlpha }
+  await writeFile(mapFile, JSON.stringify({ [ALPHA]: workspaceAlpha, [BETA]: workspaceBeta }, null, 2))
+  await writeFile(partialMapFile, JSON.stringify({ [ALPHA]: workspaceAlpha }, null, 2))
+  return { base, src, root, mapFile, partialMapFile, workspaceAlpha, workspaceBeta }
 }
 
 /** 分支用例的小库：缺 originSessionId、缺 metadata.type 各一条（各钉一个分支，不掺进主夹具的计数）。 */
-async function branchFixture(): Promise<{ src: string; root: string }> {
+async function branchFixture(): Promise<{ src: string; root: string; mapFile: string }> {
   const base = await mkdtemp(join(tmpdir(), 'pm-zcode-branch-'))
   tempDirs.push(base)
   const src = join(base, 'zcode-memories')
   const root = join(base, 'plastic-root')
+  const mapFile = join(base, 'project-map.json')
   const alphaDir = join(src, 'projects', ALPHA, 'memory')
   await mkdir(alphaDir, { recursive: true })
 
@@ -181,7 +189,8 @@ async function branchFixture(): Promise<{ src: string; root: string }> {
     '',
   ].join('\n'))
 
-  return { src, root }
+  await writeFile(mapFile, JSON.stringify({ [ALPHA]: join(base, 'projects', 'alpha') }, null, 2))
+  return { src, root, mapFile }
 }
 
 /** 读记录走 core 的读路径（与导入器自己的判定同源），不直接扫目录。 */
@@ -244,14 +253,14 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
 }
 
 describe('ZCode 记忆导入器', () => {
-  it('dry-run：条数正确、索引不迁、未知类型单列、解析失败跳过，且零写入', async () => {
+  it('dry-run：条数正确、索引不迁、未知类型单列、解析失败跳过、未映射只预告，且零写入', async () => {
     const f = await fixture()
-    const report = await importZcode({ src: f.src, root: f.root, mapFile: f.mapFile })
+    const report = await importZcode({ src: f.src, root: f.root, mapFile: f.partialMapFile })
 
     expect(report.mode).toBe('dry-run')
     expect(report.summary).toEqual({
       projects: 2, scanned: 7, wouldImport: 5, imported: 0, skipped: 2,
-      skippedByReason: { exists: 0, 'duplicate-in-source': 1, 'parse-error': 1 },
+      skippedByReason: { exists: 0, 'duplicate-in-source': 1, 'parse-error': 1, unmapped: 0 },
     })
     expect(report.unknownTypes).toEqual([{ zcodeType: 'mystery', mappedTo: 'general', titles: ['mystery-type-note'] }])
     expect(report.entries.some(entry => entry.source.endsWith('/MEMORY.md'))).toBe(false)
@@ -310,13 +319,13 @@ describe('ZCode 记忆导入器', () => {
       summary: '未知类型的记忆也要迁进来。',
       'imported-from': 'zcode:sess_alpha-0004',
     })
-    const globalRecord = byName.get('feedback-writing-style')
-    expect(globalRecord).toMatchObject({
+    const betaRecord = byName.get('feedback-writing-style')
+    expect(betaRecord).toMatchObject({
       type: 'preference',
-      scope: 'global',
+      scope: 'workspace',
+      workspacePath: f.workspaceBeta,
       'imported-from': 'zcode:sess_beta-0001',
     })
-    expect(globalRecord?.workspacePath).toBeUndefined()
     // 索引文件没有变成记录
     expect(byName.has('Memory Index')).toBe(false)
   })
@@ -326,16 +335,20 @@ describe('ZCode 记忆导入器', () => {
     const rawMap = join(f.base, 'trailing-slash-map.json')
     // Tab 补全常产生带尾部斜杠的路径；映射值原样用在 core 里会哈希出另一个工作区目录
     const rawValue = `${f.workspaceAlpha}/`
-    await writeFile(rawMap, JSON.stringify({ [ALPHA]: rawValue }, null, 2))
+    await writeFile(rawMap, JSON.stringify({ [ALPHA]: rawValue, [BETA]: `${f.workspaceBeta}/` }, null, 2))
 
     const report = await importZcode({ src: f.src, root: f.root, mapFile: rawMap, apply: true })
     expect(report.projects.find(project => project.hash === ALPHA)?.workspacePath).toBe(f.workspaceAlpha)
+    expect(report.projects.find(project => project.hash === BETA)?.workspacePath).toBe(f.workspaceBeta)
 
     const before = await locatedOf(f.root)
     const imported = before.find(located => located.record.name === 'zcode-hooks-config-gotcha')
     expect(imported?.record.workspacePath).toBe(f.workspaceAlpha)
-    // beta 那两条未映射仍是 global，其余 alpha 记录全部用规范化后的路径
-    expect(before.every(located => located.record.workspacePath === undefined || located.record.workspacePath === f.workspaceAlpha)).toBe(true)
+    // 两个项目各落一个规范后的工作区目录，没有因尾部斜杠另造目录
+    expect(new Set(before.map(located => located.dir))).toEqual(new Set([
+      join(f.root, workspaceDirName(f.workspaceAlpha)),
+      join(f.root, workspaceDirName(f.workspaceBeta)),
+    ]))
     expect(imported?.dir).toBe(join(f.root, workspaceDirName(f.workspaceAlpha)))
     expect((await readFile(join(imported!.dir, WORKSPACE_MARKER), 'utf8')).trim()).toBe(f.workspaceAlpha)
 
@@ -361,7 +374,7 @@ describe('ZCode 记忆导入器', () => {
     const second = await importZcode({ src: f.src, root: f.root, mapFile: f.mapFile, apply: true })
     expect(second.summary).toMatchObject({ scanned: 7, wouldImport: 0, imported: 0, skipped: 7 })
     // 已导入的 5 条按 title 命中；beta 的同名文件也命中已存在标题，坏文件照旧解析失败
-    expect(second.summary.skippedByReason).toEqual({ exists: 6, 'duplicate-in-source': 0, 'parse-error': 1 })
+    expect(second.summary.skippedByReason).toEqual({ exists: 6, 'duplicate-in-source': 0, 'parse-error': 1, unmapped: 0 })
     // 第二次没有任何条目进入写入动作；beta 的同名文件与坏文件仍各自按原原因跳过
     expect(second.entries.filter(entry => entry.action !== 'skipped')).toEqual([])
     expect(second.entries.filter(entry => entry.reason === 'exists')).toHaveLength(6)
@@ -403,7 +416,7 @@ describe('ZCode 记忆导入器', () => {
 
   it('缺 originSessionId 写成裸 zcode；缺 metadata.type 归 general 并进 warnings', async () => {
     const f = await branchFixture()
-    const report = await importZcode({ src: f.src, root: f.root, apply: true })
+    const report = await importZcode({ src: f.src, root: f.root, mapFile: f.mapFile, apply: true })
     const byName = new Map((await recordsOf(f.root)).map(record => [record.name, record]))
 
     expect(byName.get('no-session-note')).toMatchObject({ type: 'project', 'imported-from': 'zcode' })
@@ -412,15 +425,47 @@ describe('ZCode 记忆导入器', () => {
     expect(report.warnings.some(warning => warning.includes('(缺 type)') && warning.includes('no-type-note'))).toBe(true)
   })
 
-  it('不给 --map：所有项目按 global 处理，报告里 mapFile 为 null 且逐项目告警', async () => {
+  it('--apply 不给 --map：直接报错退出、目标记忆根零写入；无 --apply 的 dry-run 仍照常报告', async () => {
     const f = await fixture()
-    const report = await importZcode({ src: f.src, root: f.root, apply: true })
-    expect(report.mapFile).toBeNull()
-    expect(report.summary.imported).toBe(5)
-    expect(report.warnings.filter(warning => warning.includes('按 global 处理'))).toHaveLength(2)
+
+    // dry-run 不需要映射文件：照常扫、未映射项目按 global 口径预告并逐项目告警，零写入
+    const dry = await importZcode({ src: f.src, root: f.root })
+    expect(dry.mapFile).toBeNull()
+    expect(dry.summary).toMatchObject({ scanned: 7, wouldImport: 5, imported: 0 })
+    expect(dry.warnings.filter(warning => warning.includes('按 global 处理'))).toHaveLength(2)
+    expect(await filesOf(f.root)).toEqual([])
+
+    // apply 缺 --map：参数校验阶段就抛错，连记忆根都不建
+    await expect(importZcode({ src: f.src, root: f.root, apply: true })).rejects.toThrow(/--map/)
+    expect(await filesOf(f.root)).toEqual([])
+
+    // 走 bin 也是非零退出：错误进 stderr，stdout 不吐报告
+    const result = await runCli(['import-zcode', '--src', f.src, '--root', f.root, '--apply'])
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('--map')
+    expect(result.stdout).toBe('')
+    expect(await filesOf(f.root)).toEqual([])
+    expect(await recordsOf(f.root)).toEqual([])
+  })
+
+  it('--apply 漏映射某个项目：该项目条目按 unmapped 跳过并点名，其余项目照常导入', async () => {
+    const f = await fixture()
+    const report = await importZcode({ src: f.src, root: f.root, mapFile: f.partialMapFile, apply: true })
+
+    expect(report.summary).toMatchObject({ scanned: 7, wouldImport: 4, imported: 4, skipped: 3 })
+    expect(report.summary.skippedByReason).toEqual({ exists: 0, 'duplicate-in-source': 0, 'parse-error': 1, unmapped: 2 })
+    // warnings 点名被跳过的项目（hash + 条数）
+    expect(report.warnings).toContain(`项目 ${BETA} 未在映射文件中，跳过导入（2 条）`)
+    const betaEntries = report.entries.filter(entry => entry.source.includes(`projects/${BETA}/`))
+    expect(betaEntries).toHaveLength(2)
+    expect(betaEntries.every(entry => entry.action === 'skipped' && entry.reason === 'unmapped' && entry.scope === null)).toBe(true)
+
+    // 只有映射到的 alpha 条目落库，都在工作区里；beta 的条目一条都没写
     const records = await recordsOf(f.root)
-    expect(records).toHaveLength(5)
-    expect(records.every(record => record.scope === 'global' && record.workspacePath === undefined)).toBe(true)
+    expect(records).toHaveLength(4)
+    expect(records.every(record => record.scope === 'workspace' && record.workspacePath === f.workspaceAlpha)).toBe(true)
+    expect(records.some(record => record.name === 'feedback-writing-style')).toBe(false)
+    expect(report.projects).toContainEqual({ hash: BETA, files: 2, scope: null, workspacePath: null, note: '未映射，跳过导入' })
   })
 
   it('映射文件不合法或 --src 不像 ZCode 库：直接报错，不默默当成没给', async () => {

@@ -2,9 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // core 自带 src/**/*.spec.ts（factory.spec.ts 等）。不开 passWithNoTests：用例被改名或移走时，
+    // `pnpm -r test` 要红着报出来，而不是绿着跑零条（R9 要堵的静默漏洞）。
     include: ['src/**/*.spec.ts'],
-    // 仓库的用例目前都在根 tests/ 下（它们 import @plastic/core 的源码跑）；core 自带的用例还没搬起来，
-    // 空集合不算失败，`pnpm -r test` 才不会被这条绊住。core 有 src/**/*.spec.ts 后这条自然失效。
-    passWithNoTests: true,
   },
 })
