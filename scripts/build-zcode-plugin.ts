@@ -38,7 +38,7 @@ function main(argv: readonly string[]): void {
   const plugin = {
     name: 'plastic-memory',
     version,
-    description: 'plastic-memory 长期记忆：六个 memory_* 工具（走与 DSH 插件同一条写入管线）+ 会话启动注入记忆快照。',
+    description: 'plastic-memory 长期记忆：七个 memory_* 工具（走与 DSH 插件同一条写入管线，写入带来源锚、memory_source 回查）+ 会话启动注入记忆快照。',
     mcpServers: {
       'plastic-memory': {
         command: 'node',
@@ -78,7 +78,7 @@ function main(argv: readonly string[]): void {
         description: plugin.description,
         displayName: 'plastic-memory',
         displayName_i18n: { 'zh-CN': 'plastic-memory 记忆' },
-        description_i18n: { 'zh-CN': '六个 memory_* 工具（走与 DSH 插件同一条写入管线）+ 会话启动注入记忆快照' },
+        description_i18n: { 'zh-CN': '七个 memory_* 工具（走与 DSH 插件同一条写入管线，写入带来源锚、memory_source 回查）+ 会话启动注入记忆快照' },
         category: 'developer-tools',
       },
     ],

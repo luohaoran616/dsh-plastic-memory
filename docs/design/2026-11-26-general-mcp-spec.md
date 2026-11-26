@@ -105,7 +105,10 @@ ZCode 的 hook 在 `SessionStart` 上挂一条（不设 matcher，`startup`、`r
 
 - 快照不冻结、不计召回、不触发目录维护；只在会话事件时带入，别的进程改了记忆要等下一个会话事件或模型主动调 `memory_recall`。
 - 提醒灵敏度、提升目标、子会话配额、用户词典路径在独立端不生效。
-- 写入的来源锚是通道标识（`mcp:<client>`），事件区间是占位，`memory_source` 式的回查在独立端没有对应物。
+- ~~写入的来源锚是通道标识（`mcp:<client>`），事件区间是占位，`memory_source` 式的回查在独立端没有对应物。~~
+  已由[来源锚设计](2026-11-26-source-anchor-spec.md)（2026-11-26）取代：`memory_save` 按参数相关性定位到调用会话
+  （`zcode:` / `antigravity:` 真锚 + 该端自己的序号区间），定位不到才退回通道标识；独立端新增第七个工具 `memory_source`，
+  与 DSH 同参同上限同渲染；DSH 会话里也能回读外端锚。
 
 ## 验收
 

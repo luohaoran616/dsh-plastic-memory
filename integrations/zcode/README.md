@@ -1,6 +1,6 @@
 # plastic-memory 的 ZCode 插件
 
-把「六个 `memory_*` 工具」和「会话启动注入记忆快照」装成一个 ZCode 插件，装一次两样都有。
+把「七个 `memory_*` 工具」（写入带来源锚、`memory_source` 回查本会话原文）和「会话启动注入记忆快照」装成一个 ZCode 插件，装一次两样都有。
 产物不是自包含的：`plugin.json` 指向仓库里已构建好的 `packages/mcp/lib/bin.js`，所以只适合本机使用。
 
 ## 生成
@@ -21,7 +21,7 @@ ZCode 桌面端 Settings → Plugin Management → Discover → **+** 添加本�
 `integrations/zcode/dist`（即 marketplace.json 所在目录），然后在市场里安装 plastic-memory。
 装好后在会话里确认两件事：
 
-1. MCP 服务在：Settings → MCP 里 `plugin:plastic-memory:plastic-memory` 已连接，`tools/list` 有六个 `memory_*`；
+1. MCP 服务在：Settings → MCP 里 `plugin:plastic-memory:plastic-memory` 已连接，`tools/list` 有七个 `memory_*`；
 2. hook 在：新开会话的第一条 user 消息之前有一条 `source.kind = plastic-memory` 的注入。
 
 **装好并确认之后**，再去掉用户配置里旧的 `plastic-memory` MCP 条目（两份并存会出两套同名工具；

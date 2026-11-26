@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- True source anchors for the standalone (MCP) surface: `memory_save` locates
+  the client session that just issued the call by exact-argument correlation
+  in the client's own session store (ZCode's `db.sqlite`, Antigravity's
+  plaintext transcripts; both read-only) and stamps `source` with
+  `zcode:sess_…` / `antigravity:<uuid>` plus that client's own event range.
+  No match → the previous `mcp:<client>` `[0, 0]` channel marker; writes are
+  never blocked. Design: `docs/design/2026-11-26-source-anchor-spec.md`.
+- Seventh MCP tool `memory_source` on the standalone surface: same
+  parameters, caps (24 events × 400 chars) and rendering as the DSH plugin's;
+  dereferences `zcode:`/`antigravity:` anchors via read-only client-store
+  adapters, `mcp:` markers answer `unavailable`, other-project records are
+  `forbidden`.
+- DSH sessions can dereference external anchors too: the plugin's
+  `memory_source` reads ZCode/Antigravity-written anchors through the same
+  adapters (locator built lazily on first external lookup;
+  `PLASTIC_ANCHOR=off` disables locating everywhere, lookups unaffected).
+- `plastic-mcp anchor-doctor`: read-only probe report for both client stores
+  (root presence, table/column shape, ZCode online-session count, Antigravity
+  transcript count); run it after a client upgrade — a red probe means that
+  client's anchors are skipped this release, everything else keeps working.
+
 ## [0.2.0] - 2026-11-21
 
 First stable release of the 0.2 line. It includes every change from the

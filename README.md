@@ -112,7 +112,7 @@ dsh plugin --profile web add dsh-plastic-memory
 ### MCP Server
 
 ```sh
-# stdio 模式（供客户端配置调用）：六个工具 memory_save / memory_search / memory_recall / memory_read / memory_forget / memory_health
+# stdio 模式（供客户端配置调用）：七个工具 memory_save / memory_search / memory_recall / memory_read / memory_forget / memory_health / memory_source
 PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js
 
 # serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、页面接口与 Web 面板的静态页面
@@ -123,6 +123,14 @@ PLASTIC_MEMORY_ROOT=~/.dsh/memories PLASTIC_PROJECT=/home/me/projects/alpha \
 三个环境变量决定 MCP 端的行为。`PLASTIC_MEMORY_ROOT` 给记忆根的绝对路径，必填。`PLASTIC_CLIENT` 给客户端标识，它会写进记忆来源，缺省是 `unknown`。`PLASTIC_PROJECT` 给各端配置里写死的项目映射，命令的 `project` 入参缺省时用它。serve 模式要求 `PLASTIC_PROJECT` 必填且是绝对路径，缺了服务启动即退出。
 
 MCP 端只提供增查删改。体检处理与全局提升审核在 Web 面板完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+
+#### 来源锚与回查（ZCode / Antigravity）
+
+`memory_save` 落盘前会拿这次调用收到的 `title`/`text`，到本机对应客户端自己的会话存储里找「刚刚发出这一次调用」的记录（参数全等才认，时间盒 500 毫秒），定位到就给记忆带真锚——`source.sessionId` 是 `zcode:sess_…` 或 `antigravity:<uuid>`、区间是该端自己的序号；定位不到就维持现状的 `mcp:<client>` 与 `[0, 0]`，任何失败都不挡写入。两个存储全程只读：ZCode 的规范会话库 `~/.zcode/cli/db/db.sqlite`（在线时用它的 WAL 旁路文件，不在线按 immutable 打开、不留任何文件），Antigravity 每个会话的明文转写 `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`。
+
+`memory_source` 回查出处：`{ memoryId, window? }`，与 DSH 插件同参、同上限（至多 24 个事件、每条 400 字）、同渲染。带 `zcode:`/`antigravity:` 锚的在本机对应存储里开窗读；`mcp:`（没定位到）明确告知不可回查；DSH 会话写的提示去 DSH 里回查。别的项目的记忆回 `forbidden`。
+
+相关开关与探针：`PLASTIC_ANCHOR=off` 整个关掉定位（回查不受影响）；`PLASTIC_ZCODE_DIR`、`PLASTIC_ANTIGRAVITY_DIR` 覆盖两端的缺省根；`node packages/mcp/lib/bin.js anchor-doctor` 输出两端存储的只读探针报告（库结构认不认得、在线会话数、转写数）——客户端升级后先跑它，探针红表示该端这一版锚不上，其余功能不受影响。
 
 ### Web 面板
 
