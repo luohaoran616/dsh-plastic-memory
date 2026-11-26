@@ -39,8 +39,12 @@ beforeEach(async () => {
   seedWithoutUserTurn(db, SID_D)
 })
 afterEach(async () => {
-  db?.close()
-  await rm(root, { recursive: true, force: true })
+  // 先关库再删目录，但删除不能被关库的异常带掉（beforeEach 中途失败时 db 还没建出来）
+  try {
+    db?.close()
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 async function buildDb(dir: string): Promise<DatabaseSync> {

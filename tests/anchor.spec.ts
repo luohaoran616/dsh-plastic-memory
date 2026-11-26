@@ -69,11 +69,15 @@ describe('定位调度', () => {
     expect(adapter.calls).toBe(0)
   })
   it('没有适配器（目录都不存在）直接回 undefined', async () => {
-    const missing = join(await mkdtemp(join(tmpdir(), 'pm-anchor-')), 'not-there')
-    const locator = createAnchorLocator({ zcodeDir: missing, retryDelaysMs: [1, 1] })
-    expect(locator.adapters).toHaveLength(0)
-    expect(await locator.locate({ title: 't', text: 'x' })).toBeUndefined()
-    await rm(missing, { recursive: true, force: true })
+    const tmp = await mkdtemp(join(tmpdir(), 'pm-anchor-'))
+    try {
+      const missing = join(tmp, 'not-there')
+      const locator = createAnchorLocator({ zcodeDir: missing, retryDelaysMs: [1, 1] })
+      expect(locator.adapters).toHaveLength(0)
+      expect(await locator.locate({ title: 't', text: 'x' })).toBeUndefined()
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
   })
   it('首次没找到按 delays 补试，补到即出锚', async () => {
     const adapter = fakeAdapter('zcode', call => Promise.resolve(call >= 3 ? anchorAt(call) : undefined))

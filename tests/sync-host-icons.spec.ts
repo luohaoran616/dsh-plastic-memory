@@ -1,7 +1,7 @@
 // 宿主图标抽取脚本的 SVG 拆解：只收 path / circle / rect / line，别的元素和属性直接报错，不悄悄丢图形；
 // 图标数据随包发布，许可声明也要进两份发布清单。
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -56,8 +56,13 @@ describe('生成的图标数据', () => {
 describe('许可声明', () => {
   it('THIRD_PARTY_NOTICES.md 在两份发布清单里', () => {
     expect(pkg.files).toContain('THIRD_PARTY_NOTICES.md')
-    const out = join(mkdtempSync(join(tmpdir(), 'pm-shape-')), 'package.json')
-    execFileSync(process.execPath, ['scripts/publish-shape.cjs', 'package.json', out])
-    expect((JSON.parse(readFileSync(out, 'utf8')) as { files: string[] }).files).toContain('THIRD_PARTY_NOTICES.md')
+    const dir = mkdtempSync(join(tmpdir(), 'pm-shape-'))
+    try {
+      const out = join(dir, 'package.json')
+      execFileSync(process.execPath, ['scripts/publish-shape.cjs', 'package.json', out])
+      expect((JSON.parse(readFileSync(out, 'utf8')) as { files: string[] }).files).toContain('THIRD_PARTY_NOTICES.md')
+    } finally {
+      rmSync(dir, { recursive: true, force: true }) // 用完即删（否则每跑一次漏一个 pm-shape-*）
+    }
   })
 })

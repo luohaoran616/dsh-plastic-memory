@@ -20,7 +20,7 @@
  *
  * 只用可擦除的 TypeScript 语法（engines 要求的 Node 22.19+/24 原生 strip-types 直接加载，不需要构建）。
  */
-import { existsSync, readdirSync, readFileSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
@@ -98,10 +98,13 @@ async function run(ctx: Context, exit: (code: number) => void): Promise<void> {
   const attempt = async (id: string, fn: () => Promise<{ ok: boolean; detail: string; skipped?: boolean }>) => {
     try { push({ id, ...(await fn()) }) } catch (e) { push({ id, ok: false, detail: `异常: ${e instanceof Error ? e.stack ?? e.message : String(e)}` }) }
   }
+  let wsRoot: string | undefined
   const finish = () => {
     const out = process.env.HOST_CONTRACT_OUT
     if (out) writeFileSync(out, JSON.stringify(outcomes, null, 2))
     process.stdout.write(`\n===HOST-CONTRACT-RESULTS===\n${JSON.stringify(outcomes, null, 2)}\n===END===\n`)
+    // 探针的临时工作区（pm-host-ws-*）随结果一起清掉，宿主退出前删
+    if (wsRoot !== undefined) rmSync(wsRoot, { recursive: true, force: true })
     exit(outcomes.every(o => o.ok) ? 0 : 1)
   }
   const handoffPath = process.env.HOST_CONTRACT_HANDOFF
@@ -124,8 +127,8 @@ async function run(ctx: Context, exit: (code: number) => void): Promise<void> {
     })
     const home = process.env.DSH_HOME ?? ''
     const memoriesRoot = join(home, 'memories')
-    const wsRoot = mkdtempSync(join(tmpdir(), 'pm-host-ws-'))
-    const mkWs = (label: string) => { const d = join(wsRoot, label); mkdirSync(d, { recursive: true }); return realpathSync(d) }
+    wsRoot = mkdtempSync(join(tmpdir(), 'pm-host-ws-'))
+    const mkWs = (label: string) => { const d = join(wsRoot!, label); mkdirSync(d, { recursive: true }); return realpathSync(d) }
     const memoryFilePath = (id: string): string | undefined => {
       for (const d of readdirSync(memoriesRoot)) {
         for (const f of readdirSync(join(memoriesRoot, d))) {
