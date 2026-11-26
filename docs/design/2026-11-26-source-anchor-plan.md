@@ -116,20 +116,24 @@
 - Modify: `tests/standalone-boundary.spec.ts`（平面根加入 `anchor-doctor.ts`）
 - Modify: `README.md`（「六个」改「七个」、独立端与 DSH 的差异一节）、`integrations/zcode/README.md`、`scripts/build-zcode-plugin.ts`（插件描述）、`CHANGELOG.md`、`docs/design/2026-11-26-general-mcp-spec.md`（差异一节指向本文）
 
-- [ ] 根包与三个包的 `typecheck`、`lint`、`test`、`build` 全过。
-- [ ] 重启 7788（`plastic-memory-web.service`，先请示）；`/mcp` 列出七个工具，settings、snapshot 端点不回归。
-- [ ] ZCode 实测（验收 3）：**新开会话**（已开着的会话的 stdio 进程还是旧代码）→ `memory_save` 的结果带 `zcode:sess_<本会话>` → `memory_source` 第一行是本轮用户原话 → 换一个会话回查同一条。
-- [ ] Antigravity 实测（验收 4）。
-- [ ] `plastic-mcp anchor-doctor` 两端都认得；`PLASTIC_ANCHOR=off` 下写入回 `mcp:<client>`（验收 7）。
-- [ ] DSH 不回归：`scripts/host-contract/verify-plugin.ts` 照过。
-- [ ] Commit `feat(mcp): anchor-doctor`、`docs: source anchors for ZCode and Antigravity`
+- [x] 根包与三个包的 `typecheck`、`lint`、`test`、`build` 全过。
+- [x] 重启 7788（`plastic-memory-web.service`，已批准，19:19 重启）；`/mcp` 列出七个工具，settings、snapshot 端点不回归。
+- [x] ZCode 实测（验收 3）：新会话 sess_11e2022a… 的 `memory_save` 带 `zcode:sess_<本会话> [11,12]`，盘上一致；
+  另一进程 `memory_source` 回查 ok，`[11]` 行是用户原话。
+- [x] Antigravity 实测（验收 4）：更新 `mem_mwxgqombw2nvvy` 返回 `antigravity:0414c675… [26,27]`；另一进程回查
+  `[26]`=用户指令、`[27]`=调用行；旧记录（旧进程写的）随更新补上真锚。
+- [x] `plastic-mcp anchor-doctor` 两端都认得（真机：ZCode 结构 ok / 3 在线会话，Antigravity 8 转写）；
+  `PLASTIC_ANCHOR=off` 下写入回 `mcp:<client>`（验收 7），直接调用无客户端记录时防误锚成立。
+- [x] DSH 不回归：host-contract 照过——打包链先修复（core 以本地 tarball 随插件暂存 + 发布 exports 补 `./*.ts`，
+  见 exec-log 追加修复 2）：19 过 / 0 败（语义层 6 项无 key 跳过；isolation 绊线在宿主在线时误报，空闲时跑绿，绊线未改）。
+- [x] Commit `feat(mcp): anchor-doctor`、`docs: source anchors for ZCode and Antigravity`
 
 ## Task 7: 收尾
 
-- [ ] `docs/design/exec-log-20261126.md` 追加本轮（commit 清单、逐任务偏差、实测记录、遗留）。
-- [ ] 设计说明状态改「已实施并上线」；计划复选框打勾。
-- [ ] 快进并回 `dsh-ours`。
-- [ ] Commit `docs: exec log for the source anchor round`
+- [x] `docs/design/exec-log-20261126.md` 追加本轮（commit 清单、逐任务偏差、实测记录、遗留）。
+- [x] 设计说明状态改「已实施并上线」；计划复选框打勾。
+- [x] 快进并回 `dsh-ours`。
+- [x] Commit `docs: exec log for the source anchor round`
 
 ## 回退
 

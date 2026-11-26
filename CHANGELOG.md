@@ -28,6 +28,14 @@ All notable changes to this project are documented here. The format follows
   transcript count); run it after a client upgrade — a red probe means that
   client's anchors are skipped this release, everything else keeps working.
 
+### Fixed
+- The standalone `memory_save` description now renders the MCP-flavoured
+  guide: the settings-backed type registry dropped the surface argument, so
+  MCP clients were shown DSH-only parameter names (`action`, `edits`,
+  `content`, `scope`) that the tool does not take — models concluded that
+  updates were unsupported and re-saved instead. The DSH plugin's own
+  description is unchanged.
+
 ## [0.2.0] - 2026-11-21
 
 First stable release of the 0.2 line. It includes every change from the

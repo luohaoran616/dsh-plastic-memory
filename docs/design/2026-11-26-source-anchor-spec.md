@@ -1,6 +1,7 @@
 # plastic-memory 真来源锚：独立端写入带会话锚、第七个工具 memory_source（设计说明，2026-11-26）
 
-状态：已拍板（2026-11-26）——A5 做，回查暂不套密钥遮罩，按计划开工。唯一未决：Antigravity 的 MCP 调用形状实测（计划 Task 0，用户配合触发）。实施计划见 [2026-11-26-source-anchor-plan.md](2026-11-26-source-anchor-plan.md)。
+状态：**已实施并上线**（2026-11-26 晚，含四项实测验收；执行记录见 [exec-log-20261126.md](exec-log-20261126.md) 的来源锚轮）。
+实施计划见 [2026-11-26-source-anchor-plan.md](2026-11-26-source-anchor-plan.md)。
 上一轮的 [通用 MCP 设计说明](2026-11-26-general-mcp-spec.md) 把这件事列在「独立端与 DSH 的已知差异」里，
 本文取代其中「写入的来源锚是通道标识」那一条。
 
