@@ -4,3 +4,4 @@ coverage/
 *.log
 .DS_Store
 packages/webui/dist/
+integrations/zcode/dist/

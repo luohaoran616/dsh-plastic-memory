@@ -112,7 +112,7 @@ dsh plugin --profile web add dsh-plastic-memory
 ### MCP Server
 
 ```sh
-# stdio 模式（供客户端配置调用）：五个工具 memory_save / memory_search / memory_read / memory_forget / memory_health
+# stdio 模式（供客户端配置调用）：六个工具 memory_save / memory_search / memory_recall / memory_read / memory_forget / memory_health
 PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js
 
 # serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、页面接口与 Web 面板的静态页面
@@ -157,6 +157,21 @@ pnpm --filter @plastic/webui build  # 页面产物，落在 packages/webui/dist
 ```
 
 ZCode 加在 `~/.zcode/cli/setting.json` 的 `mcp.servers` 下；Antigravity 加在 `~/.gemini/config/mcp_config.json` 的 `mcpServers` 下。
+
+### 设置页（独立端）
+
+`plastic-mcp serve` 起服务后，浏览器打开本机 7788 就是完整面板：记忆页之外还有设置页（原版设置页一行不改地挂上），记忆类型（场景、自建类型、预设）、带入上限、超限处理、证据下钻、主题色都可查可改，中英文可切。设置落在一个跨进程共享的文档（记忆根的 `.state/settings.json`，显式改动叠在出厂值上），改完即热生效：`memory_save` 的类型规则描述、快照分组、页面显示随之变化。提醒灵敏度与提升去处两项在独立端没有消费者，页面置灰并写明原因（值照存，DSH 宿主接入同一份设置后生效）。
+
+`memory_save` 的描述随当前场景带上「各类型记什么、什么时候记」；`memory_recall` 返回项目（全局 + 该项目）的注入快照原文，与下面 hook 注入的是同一段文本。
+
+### ZCode 插件（MCP + 快照 hook）
+
+```sh
+pnpm build && pnpm --filter @plastic/mcp build
+node scripts/build-zcode-plugin.ts      # → integrations/zcode/dist/plastic-memory/
+```
+
+生成的插件同时给出 MCP 服务与一条 `SessionStart` hook：新会话开始时 hook 取会话工作目录问 7788 的快照接口，把记忆快照作为上下文注入（3 秒超时，服务不通就静默，不挡会话）。`PLASTIC_PROJECT` 在插件里写的是 `${CLAUDE_PROJECT_DIR}` 模板（按工作区解析项目），`env` 的值是否展开需实测；不成立时按 `integrations/zcode/README.md` 的回退办法手改 `~/.zcode/cli/config.json`。
 
 ### 从 ZCode 导入存量记忆
 

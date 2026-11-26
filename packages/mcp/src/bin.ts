@@ -137,6 +137,12 @@ async function main(argv: string[]): Promise<void> {
     case 'stdio':
       await runStdio()
       return
+    case 'hook-snapshot': {
+      // SessionStart 的快照 hook（D5）：只走 HTTP，不建上下文平面；任何失败静默退出 0
+      const { hookOptionsFromEnv, runHookCli } = await import('./hook-snapshot.ts')
+      await runHookCli(hookOptionsFromEnv(process.env))
+      return
+    }
     case 'import-zcode': {
       // 动态加载：stdio 模式不为导入器背 fs 与读映射文件的依赖，两条路径互不影响
       const { runImportZcodeCli } = await import('./import-zcode.ts')
@@ -164,7 +170,7 @@ async function main(argv: string[]): Promise<void> {
       return
     }
     default:
-      fail(`未知子命令：${command}（可用：stdio（缺省）、serve、import-zcode）`)
+      fail(`未知子命令：${command}（可用：stdio（缺省）、serve、hook-snapshot、import-zcode）`)
   }
 }
 
