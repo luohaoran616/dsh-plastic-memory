@@ -5,6 +5,7 @@
  * 机械地精确对上，不猜；对不上（返回 undefined）就不锚，写入照旧落 mcp:<client>。
  */
 import { existsSync } from 'node:fs'
+import { createAntigravityAnchorAdapter } from './anchor-antigravity.ts'
 import { createZcodeAnchorAdapter } from './anchor-zcode.ts'
 
 /** 与 source.ts 的 WINDOW_CAP 同值（tests/anchor.spec.ts 守相等）：锚开窗与 DSH 回查同一暴露面。 */
@@ -72,7 +73,7 @@ export interface AnchorLocatorOptions {
   enabled?: boolean
   /** ZCode 客户端根目录（缺省 ~/.zcode/cli）；目录不存在则不启用该适配器（零 I/O） */
   zcodeDir?: string
-  /** Antigravity 客户端根目录（缺省 ~/.gemini/antigravity）；适配器在 Task 2 登记后启用 */
+  /** Antigravity 客户端根目录（缺省 ~/.gemini/antigravity）；目录不存在则不启用该适配器（零 I/O） */
   antigravityDir?: string
   /** 直接注入适配器（测试与 anchor-doctor 用）；给了就不再按目录自建 */
   adapters?: readonly AnchorAdapter[]
@@ -143,6 +144,9 @@ function buildAdapters(options: AnchorLocatorOptions): AnchorAdapter[] {
   const adapters: AnchorAdapter[] = []
   if (options.zcodeDir !== undefined && existsSync(options.zcodeDir)) {
     adapters.push(createZcodeAnchorAdapter({ zcodeDir: options.zcodeDir }))
+  }
+  if (options.antigravityDir !== undefined && existsSync(options.antigravityDir)) {
+    adapters.push(createAntigravityAnchorAdapter({ antigravityDir: options.antigravityDir }))
   }
   return adapters
 }

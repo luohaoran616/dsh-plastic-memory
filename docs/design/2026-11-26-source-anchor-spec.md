@@ -45,8 +45,10 @@
     `{ step_index, source: USER_EXPLICIT | MODEL | SYSTEM, type: USER_INPUT | PLANNER_RESPONSE | GENERIC | SYSTEM_MESSAGE | CHECKPOINT, status, created_at, content?, tool_calls?: [{ name, args }], truncated_fields? }`。
     模型发出工具调用的那行（`PLANNER_RESPONSE`）先于工具执行写入（样例：响应 03:06:16Z，工具 03:06:21Z 才开始跑）。
     `tool_calls[].args` 有两种形态：JSON 字符串，或「值是 JSON 编码字符串」的对象。
-  - **没实测的一环**：Antigravity 历史上没调过任何 MCP 工具（8 份转写共 10 个工具名，全是内置的）。
-    MCP 调用在转写里的名字与参数编码、以及这一行在工具执行前是否已刷到磁盘，要到计划的 Task 0 实测。
+  - **已实测（Task 0，2026-11-26 19:08，brain/bdebe3c4… 的 memory_search 调用）**：MCP 调用在转写里是包装名
+    `call_mcp_tool`——真工具名在 `args.ToolName`（JSON 编码字符串）、完整入参在 `args.Arguments`（JSON 字符串，
+    与服务器收到的一字不差），PLANNER_RESPONSE 行（11:08:25Z）先于结果步（11:08:27Z）落盘。
+    精确比对可行，写入侧按 A2 全做（截断退避仍保留，防大入参被 truncated_fields 截断）。
 - **`node:sqlite` 开箱可用**：Node v24.19.0 里不带任何 flag 就能 `import`，SQLite 3.53.3；`@types/node` 26.2.0 自带类型。
   零新增依赖。
 - **只读连接也会在库目录留文件**：实测常规只读连接（`readOnly: true`）关闭后留下 0 字节的 `-wal` 与 32 KB 的 `-shm`
@@ -182,5 +184,5 @@ DSH 的 `memory_source` 用同一个 `executeSource`，所以只要接线处把�
 
 1. A5（DSH 回读外端锚）：**做**（Task 5 转正）。
 2. 回查行不套密钥遮罩：**本轮不做**，保持与 DSH 一致。
-3. Task 0 的 Antigravity 实测仍待用户配合触发（2026-11-26 复查过全部转写，`memory_` 的命中只是用户提示词文本，
-   尚无任何 MCP 调用）。在这之前 Task 2 不动工，Task 1/3/4/5 不受影响。
+3. Task 0 的 Antigravity 实测**已完成**（2026-11-26 19:08，见「已核实的事实」）：形状可识别、参数可精确比对，
+   Antigravity 适配器按 A2 全做。
