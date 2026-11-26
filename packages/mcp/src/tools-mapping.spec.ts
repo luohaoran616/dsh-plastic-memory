@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { encodeRecord, splitFrontmatter } from '@plastic/core/storage/frontmatter.ts'
-import { GLOBAL_DIR, workspaceDirName } from '@plastic/core/storage/paths.ts'
+import { GLOBAL_DIR, WORKSPACE_MARKER, workspaceDirName } from '@plastic/core/storage/paths.ts'
 import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import { createMemoryTools, type MemorySaveResult } from './tools.ts'
@@ -214,6 +214,64 @@ describe('memory_save 的来源锚', () => {
       const updated = await anchoredTools.tools.save({ title: '带锚写入', text: '改过的正文', origin: 'user-stated', id: created.id })
       if (!updated.ok) throw new Error('应更新成功')
       expect(updated.source).toEqual({ sessionId: 'zcode:sess_bbb', eventRange: [11, 12], sourceMode: 'user-explicit' })
+    } finally {
+      await rm(anchoredRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('memory_source（独立端回查）', () => {
+  /** 在记忆根里直接种一条带 source 的 workspace 记录（写到它自己所属 workspace 的目录）。 */
+  async function seedWithSource(rootDir: string, memory: MemoryRecord): Promise<void> {
+    const ws = memory.workspacePath!
+    const dir = join(rootDir, workspaceDirName(ws))
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, WORKSPACE_MARKER), `${ws}\n`)
+    await writeFile(join(dir, `${memory.id}.md`), encodeRecord(memory, {}))
+  }
+
+  const externalRecord = (id: string, workspacePath: string): MemoryRecord => ({
+    id, name: '带外端锚', type: 'knowledge', scope: 'workspace', workspacePath, tags: [],
+    content: '外端锚正文', summary: '外锚',
+    source: { sessionId: 'zcode:sess_map', eventRange: [2, 5], sourceMode: 'user-explicit' },
+    createdAt: 1, updatedAt: 1, lastConfirmedAt: 1, lastRecalledAt: null, recallCount: 0,
+    status: 'active', confidence: 0.9,
+  })
+
+  it('mcp: 通道标识回 unavailable（原因进 JSON，text 与 DSH 渲染同文）；不存在的 id not-found', async () => {
+    const created = await saved({ title: '回查目标', text: '回查正文', origin: 'user-stated', type: 'knowledge' })
+    const result = await toolset.tools.source({ memoryId: created.id })
+    expect(result.kind).toBe('unavailable')
+    if (result.kind !== 'unavailable') throw new Error(result.kind)
+    expect(result.reason).toContain('没有定位到原始对话')
+    expect(result.text).toContain('原始证据不可用')
+    const ghost = await toolset.tools.source({ memoryId: 'mem_ghost' })
+    expect(ghost.kind).toBe('not-found')
+    expect(ghost.text).toContain('不存在或已删除')
+  })
+
+  it('外端锚经注入的适配器读到窗口：lines 与 range 原样透出，text 是 DSH 的渲染；别的项目的记录 forbidden', async () => {
+    const anchoredRoot = await mkdtemp(join(tmpdir(), 'pm-mcp-map-source-'))
+    try {
+      const adapter = {
+        scheme: 'zcode' as const,
+        locateCall: async () => undefined,
+        readWindow: async () => ({ events: [{ seq: 2, role: 'user', text: '第二轮：帮我记一条' }], skipped: 0, range: [2, 5] }),
+      }
+      const { createContextPlane: create } = await import(CONTEXT_MODULE)
+      const anchoredPlane = await create({ memoryRoot: anchoredRoot, client: 'spec', project, anchors: { adapters: [adapter] } })
+      await seedWithSource(anchoredRoot, externalRecord('mem_zsrc', project))
+      // 别的项目的 workspace 记录种在它自己的目录里：定位得到但跨项目门拒绝（与 DSH 同一条规则）
+      await seedWithSource(anchoredRoot, externalRecord('mem_zforeign', '/other/project'))
+      const anchoredTools = createMemoryTools(anchoredPlane)
+      const result = await anchoredTools.tools.source({ memoryId: 'mem_zsrc' })
+      if (result.kind !== 'ok') throw new Error(`应回查成功：${JSON.stringify(result)}`)
+      expect(result.lines).toEqual(['- [2] user: 第二轮：帮我记一条'])
+      expect(result.sessionId).toBe('zcode:sess_map')
+      expect(result.range).toEqual([2, 5])
+      expect(result.text).toContain('源自会话 zcode:sess_map 的 seq 2–5')
+      expect(result.text).toContain('- [2] user: 第二轮：帮我记一条')
+      expect(await anchoredTools.tools.source({ memoryId: 'mem_zforeign' })).toMatchObject({ kind: 'forbidden', memoryId: 'mem_zforeign' })
     } finally {
       await rm(anchoredRoot, { recursive: true, force: true })
     }

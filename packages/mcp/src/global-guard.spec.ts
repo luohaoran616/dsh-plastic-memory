@@ -110,7 +110,7 @@ describe('MCP 全局守卫（R12 / Review Focus #5）', () => {
     const { client } = await startServer()
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name).sort()).toEqual([
-      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
+      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search', 'memory_source',
     ])
     for (const tool of tools) expect(tool.name).not.toContain('promote')
     const save = tools.find(tool => tool.name === 'memory_save')!

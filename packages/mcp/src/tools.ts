@@ -36,6 +36,8 @@ export interface MemoryContextPort {
   search(input: SearchInput): Promise<SearchResult>
   /** 快照原文与用量（纯读）。workspacePath 缺省只带全局。 */
   snapshot(workspacePath: string | undefined): Promise<{ text: string } & SnapshotUsageShape>
+  /** 回查记忆的来源锚（memory_source 的实现层）：返回结构化结果 + 与 DSH 渲染逐字相同的 text。 */
+  source(input: { memoryId: string; window?: number }, workspacePath: string | undefined): Promise<MemorySourceResult & { text: string }>
   /**
    * 来源锚定位（写入侧，设计说明 §A2）：拿这次调用收到的 title/text 到客户端自己的会话存储里找
    * 「刚刚发出这一次调用」的会话。缺省没有（不定位，维持 mcp:<client>）；上下文平面按选项装配。
@@ -194,7 +196,23 @@ export interface MemoryHealthResult {
   topIssues: string[]
 }
 
-/** 六个工具的实现层接口：stdio 的注册与 HTTP 模式的 `/mcp` 端点共用。 */
+export interface MemorySourceInput {
+  /** 要回查的记忆 id（快照/搜索结果里的 mem_ 开头 id）。 */
+  memoryId: string
+  /** 读取的事件条数，缺省覆盖记忆产生的当轮对话，上限 24。 */
+  window?: number
+}
+
+/** memory_source 的结构化结果（插件 executeSource 的 SourceResult 原样满足它，code 放宽成 string）。 */
+export type MemorySourceResult =
+  | { kind: 'ok'; memoryId: string; name: string; sessionId: string; range: [number, number]; lines: string[]; skipped: number }
+  | { kind: 'not-found'; memoryId: string }
+  | { kind: 'no-source'; memoryId: string }
+  | { kind: 'forbidden'; memoryId: string }
+  | { kind: 'rejected'; memoryId: string; code: string; reason: string }
+  | { kind: 'unavailable'; memoryId: string; reason: string }
+
+/** 七个工具的实现层接口：stdio 的注册与 HTTP 模式的 `/mcp` 端点共用。 */
 export interface MemoryTools {
   save(input: MemorySaveInput): Promise<MemorySaveResult>
   recall(input?: MemoryRecallInput): Promise<MemoryRecallResult>
@@ -202,6 +220,7 @@ export interface MemoryTools {
   read(input: MemoryReadInput): Promise<MemoryRecordView>
   forget(input: MemoryForgetInput): Promise<MemoryForgetResult>
   health(): Promise<MemoryHealthResult>
+  source(input: MemorySourceInput): Promise<MemorySourceResult & { text: string }>
 }
 
 export interface MemoryToolsOptions {
@@ -280,9 +299,9 @@ const SAVE_PERSISTENCE = [
 ].join('')
 
 export interface MemoryToolset {
-  /** 六个工具的实现；测试钩子（withTestHoldLock）可整体替换其中的函数，处理器按属性现取。 */
+  /** 七个工具的实现；测试钩子（withTestHoldLock）可整体替换其中的函数，处理器按属性现取。 */
   tools: MemoryTools
-  /** 现读设置（变了重建类型表）并按当前类型表把六个工具（重）注册到 server；变了回 true（registerTool 自带 tools/list_changed 通知）。 */
+  /** 现读设置（变了重建类型表）并按当前类型表把七个工具（重）注册到 server；变了回 true（registerTool 自带 tools/list_changed 通知）。 */
   register(server: McpServer): Promise<boolean>
 }
 
@@ -422,6 +441,11 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
    * 扣分口径与 memory_health 的 description 保持一致：malformed 每条例 10 分/上限 30，expired 4/20，orphan 3/15；
    * score = 100 − 扣分合计，夹在 0–100 的整数。
    */
+  const source = async (input: MemorySourceInput): Promise<MemorySourceResult & { text: string }> => {
+    // 跨项目门在实现层里按 workspacePath 判（与 DSH 的 executeSource 同一条规则）；独立端没有子会话委派
+    return await context.source(input, defaultWorkspace())
+  }
+
   const health = async (): Promise<MemoryHealthResult> => {
     const stamp = options.now?.() ?? Date.now()
     const read = await context.store.readRaw(undefined, { includeArchive: true })
@@ -452,7 +476,7 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
   }
 
   const self: MemoryToolset = {
-    tools: { save, recall, search, read, forget, health },
+    tools: { save, recall, search, read, forget, health, source },
     async register(server) {
       const changed = await context.refresh()
       define(server)
@@ -460,7 +484,7 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
     },
   }
 
-  /** 按当前类型表把六个工具注册到 server（重名即覆盖，SDK 自动发 tools/list_changed）。 */
+  /** 按当前类型表把七个工具注册到 server（重名即覆盖，SDK 自动发 tools/list_changed）。 */
   function define(server: McpServer): void {
     const typeNames = context.registry.all().map(t => t.name)
     const rules = context.registry.renderSaveDescription('mcp')
@@ -564,6 +588,23 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
     }, async () => {
       await refreshAndRedefined(server)
       return jsonResult(await self.tools.health())
+    })
+
+    server.registerTool('memory_source', {
+      description: [
+        '回查一条长期记忆的原始出处：读取产生这条记忆的会话轨迹片段（当时的对话原文）。',
+        '用于核对记忆的来源语境，例如记忆之间矛盾、或治理裁决前想看当时用户怎么说的。',
+        '只读，只能回查当前项目和全局记忆；原始会话已不可读时会明确告知。',
+        '写入时定位到会话的（source.sessionId 带 zcode:/antigravity: 前缀）在本机对应客户端的存储里开窗读；',
+        '没定位到的（mcp: 前缀）没有可回查的对话；DSH 会话写的请在 DSH 里回查。',
+      ].join(''),
+      inputSchema: {
+        memoryId: z.string().describe('要回查的记忆 id（快照/搜索结果里的 mem_ 开头 id）'),
+        window: z.number().int().min(1).max(24).optional().describe('读取的事件条数，缺省覆盖记忆产生的当轮对话，上限 24'),
+      },
+    }, async args => {
+      await refreshAndRedefined(server)
+      return jsonResult(await self.tools.source(args))
     })
   }
 

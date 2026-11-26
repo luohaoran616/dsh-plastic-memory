@@ -25,6 +25,7 @@ import { prereadSnapshot } from '../runtime.ts'
 import { assembleSnapshot, type SnapshotUsage } from '../snapshot.ts'
 import type { TypeRegistry } from '../type-registry.ts'
 import { createAnchorLocator, type AnchorLocator, type AnchorLocatorOptions, type SourceAnchor } from '../tools/anchor.ts'
+import { executeSource, renderSourceResult, type SourceResult } from '../tools/source.ts'
 import { goneCopies } from '../tools/workspace-gate.ts'
 
 /** 上下文平面的参数：记忆根必给；项目、客户端标识、日志、时钟、写锁可选（锁缺省自建一把，同进程多平面注入同一把）。 */
@@ -76,6 +77,11 @@ export interface ContextPlane {
    * 「刚刚发出这一次调用」的会话。未启用、没找到、读不了都回 undefined（定位器内部已记日志），不挡写入。
    */
   locateAnchor(args: { title: string, text: string }): Promise<SourceAnchor | undefined>
+  /**
+   * 回查记忆的来源锚（memory_source 的实现层）：mcp: 通道标识不可回查，外端锚经适配器开窗，
+   * DSH 锚在本进程读不了（提示去 DSH）。返回结构化结果 + 与 DSH 渲染逐字相同的 text。
+   */
+  source(input: { memoryId: string, window?: number }, workspacePath: string | undefined): Promise<SourceResult & { text: string }>
   search(input: SearchInput): Promise<SearchResult>
   /** 快照原文 + 用量。纯读：不冻结、不计召回、不跑目录维护（与 DSH 冻结快照的两点差别）。workspacePath 缺省只带全局。 */
   snapshot(workspacePath: string | undefined): Promise<{ text: string } & SnapshotUsage>
@@ -148,6 +154,16 @@ export async function createContextPlane(options: ContextPlaneOptions): Promise<
     refresh: () => backed.refresh(),
     resolveProject,
     locateAnchor: args => anchors === undefined ? Promise.resolve(undefined) : anchors.locate(args),
+    // memory_source 的独立端实现：无宿主事件流（DSH 锚按 noHostReason 降级），外端锚经锚定位器的 reader 开窗
+    source: async (input, workspacePath) => {
+      const result = await executeSource(input, { workspacePath }, {
+        store,
+        getReadEvent: () => null,
+        noHostReason: '这条记忆出自 DeepSeek Harness 会话，请在 DSH 里回查',
+        readExternal: anchors === undefined ? undefined : scheme => anchors.reader(scheme),
+      })
+      return { ...result, text: renderSourceResult(result) }
+    },
     search,
     snapshot: async workspacePath => {
       const pre = await prereadSnapshot(store, workspacePath)

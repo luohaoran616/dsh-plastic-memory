@@ -261,7 +261,7 @@ describe('HTTP 模式（serve）', () => {
     }
   })
 
-  it('/mcp 用 Streamable HTTP 暴露同一组六工具，写入与界面共用同一个上下文平面', async () => {
+  it('/mcp 用 Streamable HTTP 暴露同一组七工具，写入与界面共用同一个上下文平面', async () => {
     const http = await startHttp()
     const client = new Client({ name: 'http-spec', version: '0.0.0' })
     const transport = new StreamableHTTPClientTransport(new URL('/mcp', http.server.url))
@@ -269,7 +269,7 @@ describe('HTTP 模式（serve）', () => {
     try {
       const { tools } = await client.listTools()
       expect(tools.map(tool => tool.name).sort()).toEqual([
-        'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
+        'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search', 'memory_source',
       ])
       const saved = await callJson<{ id: string }>(client, 'memory_save', {
         title: '经 HTTP MCP 保存', text: 'http-mcp-marker 正文', origin: 'user-stated', type: 'knowledge',

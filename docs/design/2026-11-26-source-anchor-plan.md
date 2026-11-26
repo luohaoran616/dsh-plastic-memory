@@ -92,9 +92,9 @@
 - `MemoryTools.source({ memoryId, window? })` → `{ ...SourceResult, text: string }`；`text` 与 DSH 的 `renderSourceResult` 同一段。
 - 工具描述照 DSH 的 `memory_source`（只说能力，不说姿态——姿态归快照里的证据下钻档位管）。
 
-- [ ] 失败测试：握手列出七个工具；外端锚经适配器开窗，渲染与 DSH 同格式；`mcp:`、DSH 锚、存储不在本机三种 `unavailable` 的原因文案；别的项目的 workspace 记录回 `forbidden`；`PLASTIC_ANCHOR=off` 不影响回查。
-- [ ] 实现到测试通过。
-- [ ] Commit `feat(mcp): memory_source on the standalone surface`
+- [x] 失败测试：握手列出七个工具；外端锚经适配器开窗，渲染与 DSH 同格式；`mcp:`、DSH 锚、适配器缺席/抛错四种 `unavailable` 的原因文案；别的项目的 workspace 记录回 `forbidden`（真实文件存储实测：种在别的项目目录里的记录定位得到、门拒绝——比计划预期的「看不见」更强）；`PLASTIC_ANCHOR=off` 不影响回查（回查不走 enabled 开关，天然成立）。
+- [x] 实现到测试通过（source.spec 26、mcp 79、全量 4997 绿）。
+- [x] Commit `feat(mcp): memory_source on the standalone surface`
 
 ## Task 5: DSH 回读外端锚（已拍板：做）
 

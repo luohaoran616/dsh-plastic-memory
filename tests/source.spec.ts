@@ -299,3 +299,62 @@ describe('renderSourceResult', () => {
     expect(renderSourceResult({ kind: 'forbidden', memoryId: 'mem_a' })).toContain('其他项目')
   })
 })
+
+describe('executeSource 的锚前缀分发（2026-11-26-source-anchor §A4）', () => {
+  const ctx = { workspacePath: '/proj' as string | undefined }
+
+  it('mcp: 通道标识直接 unavailable，不调宿主', async () => {
+    const store = await storeWith(record({ source: { sessionId: 'mcp:zcode', eventRange: [0, 0], sourceMode: 'user-explicit' } }))
+    const readEvent: ReadEventFn = vi.fn()
+    const result = await executeSource({ memoryId: 'mem_a' }, ctx, { store, getReadEvent: () => readEvent })
+    expect(result).toEqual({ kind: 'unavailable', memoryId: 'mem_a', reason: '经 MCP 写入时没有定位到原始对话，source 只是通道标识' })
+    expect(readEvent).not.toHaveBeenCalled()
+  })
+
+  it('zcode: 锚经注入的适配器开窗，宿主 readEvent 不被调用；行格式与 range/skipped 原样透出', async () => {
+    const store = await storeWith(record({ source: { sessionId: 'zcode:sess_x', eventRange: [2, 5], sourceMode: 'user-explicit' } }))
+    const readEvent: ReadEventFn = vi.fn()
+    const readWindow = vi.fn().mockResolvedValue({
+      events: [
+        { seq: 2, role: 'user', text: '第二轮：帮我记一条' },
+        { seq: 3, role: 'tool', text: '调用 mcp__plugin_plastic-memory_plastic-memory__memory_save' },
+      ],
+      skipped: 1, range: [0, 5],
+    })
+    const result = await executeSource({ memoryId: 'mem_a' }, ctx, {
+      store, getReadEvent: () => readEvent,
+      readExternal: scheme => (scheme === 'zcode' ? { readWindow } : undefined),
+    })
+    if (result.kind !== 'ok') throw new Error(result.kind)
+    expect(readEvent).not.toHaveBeenCalled()
+    expect(readWindow).toHaveBeenCalledWith({ sessionId: 'zcode:sess_x', eventRange: [2, 5] }, undefined)
+    expect(result.lines).toEqual([
+      '- [2] user: 第二轮：帮我记一条',
+      '- [3] tool: 调用 mcp__plugin_plastic-memory_plastic-memory__memory_save',
+    ])
+    expect(result.skipped).toBe(1)
+    expect(result.range).toEqual([0, 5])
+    expect(result.sessionId).toBe('zcode:sess_x')
+    expect(renderSourceResult(result)).toContain('- [2] user: 第二轮：帮我记一条')
+  })
+
+  it('适配器缺席或抛错 → unavailable（带原因）', async () => {
+    const store = await storeWith(record({ source: { sessionId: 'antigravity:83310ec9-ef98-4b39-ad3d-edbdd079eaec', eventRange: [0, 3], sourceMode: 'user-explicit' } }))
+    const missing = await executeSource({ memoryId: 'mem_a' }, ctx, { store, getReadEvent: () => null })
+    expect(missing).toMatchObject({ kind: 'unavailable', reason: '本机没有配置该客户端的锚适配器，读不了外端锚' })
+    const throwing = await executeSource({ memoryId: 'mem_a' }, ctx, {
+      store, getReadEvent: () => null,
+      readExternal: () => ({ readWindow: async () => { throw new Error('ZCode 里没有这个会话') } }),
+    })
+    expect(throwing).toMatchObject({ kind: 'unavailable', reason: '原始会话不可读（ZCode 里没有这个会话）' })
+  })
+
+  it('dsh 锚在本进程没有宿主事件流时按注入的原因降级（独立端提示去 DSH 回查）', async () => {
+    const store = await storeWith(record({}))
+    const result = await executeSource({ memoryId: 'mem_a' }, ctx, {
+      store, getReadEvent: () => null,
+      noHostReason: '这条记忆出自 DeepSeek Harness 会话，请在 DSH 里回查',
+    })
+    expect(result).toMatchObject({ kind: 'unavailable', reason: '这条记忆出自 DeepSeek Harness 会话，请在 DSH 里回查' })
+  })
+})

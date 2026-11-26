@@ -104,11 +104,11 @@ interface MemoryRecordView {
 }
 
 describe('MCP 工具面（D2）', () => {
-  it('stdio 连接后列出的工具恰为 D2 五个名字，输入面与 D2 一字不差', async () => {
+  it('stdio 连接后列出的工具恰为七个 memory_*，输入面与 D2 一字不差', async () => {
     const { client } = await startServer()
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name).sort()).toEqual([
-      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
+      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search', 'memory_source',
     ])
     const byName = new Map(tools.map(tool => [tool.name, tool]))
     for (const tool of tools) expect(tool.description?.trim().length ?? 0).toBeGreaterThan(0)
@@ -131,6 +131,22 @@ describe('MCP 工具面（D2）', () => {
     expect(Object.keys(schemaOf('memory_forget').properties ?? {})).toEqual(['id'])
     expect(schemaOf('memory_forget').required).toEqual(['id'])
     expect(Object.keys(schemaOf('memory_health').properties ?? {})).toEqual([])
+    expect(Object.keys(schemaOf('memory_source').properties ?? {}).sort()).toEqual(['memoryId', 'window'])
+    expect(schemaOf('memory_source').required).toEqual(['memoryId'])
+  })
+
+  it('memory_source：mcp: 通道标识明确不可回查；不存在的 id not-found', async () => {
+    const server = await startServer()
+    const saved = await callJson<{ id: string }>(server.client, 'memory_save', {
+      title: '回查目标', text: '回查正文', origin: 'user-stated', type: 'knowledge',
+    })
+    const result = await callJson<{ kind: string; reason?: string; text: string }>(server.client, 'memory_source', { memoryId: saved.id })
+    expect(result.kind).toBe('unavailable')
+    expect(result.reason).toContain('没有定位到原始对话')
+    expect(result.text).toContain('原始证据不可用')
+    const ghost = await callJson<{ kind: string; text: string }>(server.client, 'memory_source', { memoryId: 'mem_ghost' })
+    expect(ghost.kind).toBe('not-found')
+    expect(ghost.text).toContain('不存在或已删除')
   })
 
   it('memory_save → memory_search → memory_read 往返；frontmatter 带 mcp 来源与派生 summary', async () => {

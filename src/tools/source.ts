@@ -2,6 +2,7 @@ import type { MemoryStore } from '@plastic/core/store.ts'
 import type { MemoryRecord } from '@plastic/core/record-schema.ts'
 import type { SourceRejectCode } from '@plastic/core/contract-codes.ts'
 import { maskSecretSurface } from '@plastic/core/secrets.ts'
+import { schemeOf, type AnchorAdapter, type AnchorWindow } from './anchor.ts'
 
 /** ctx.sessionQuery.readEvent 的最小契约（2026-08-28 真机探针核实） */
 export interface ReadEventFn {
@@ -25,6 +26,13 @@ export interface SourceToolDeps {
   store: MemoryStore
   /** 运行时探测 sessionQuery（ctx.get + try/catch）；null = 服务不可用 → 优雅降级 */
   getReadEvent: () => ReadEventFn | null
+  /**
+   * 外端锚（`zcode:` / `antigravity:` 前缀）的开窗读：按 scheme 取适配器；缺省没有（未接线或本机没配该端）。
+   * 只用 readWindow 这一半——定位是写入侧的事，回查按记录里的锚走。
+   */
+  readExternal?: (scheme: 'zcode' | 'antigravity') => Pick<AnchorAdapter, 'readWindow'> | undefined
+  /** dsh 前缀的锚在本进程读不了时的原因（独立端没有宿主事件流，提示去 DSH 回查）；缺省按宿主服务未挂载。 */
+  noHostReason?: string
 }
 
 export type SourceResult =
@@ -121,8 +129,31 @@ export async function executeSource(
   // 手编/手建文件没有出处锚：没有可回查的会话
   if (!source) return { kind: 'no-source', memoryId: args.memoryId }
 
+  // 锚的 scheme 前缀分发（设计说明 2026-11-26-source-anchor §A4）：无前缀（DSH 原生）走宿主原路，
+  // 外端前缀走适配器开窗（上限与方向在适配器里与 sourceWindow 对齐），mcp: 通道标识没有可回查的对话
+  const scheme = schemeOf(source.sessionId)
+  if (scheme === 'mcp') {
+    return { kind: 'unavailable', memoryId: args.memoryId, reason: '经 MCP 写入时没有定位到原始对话，source 只是通道标识' }
+  }
+  if (scheme === 'zcode' || scheme === 'antigravity') {
+    const adapter = deps.readExternal?.(scheme)
+    if (adapter === undefined) {
+      return { kind: 'unavailable', memoryId: args.memoryId, reason: '本机没有配置该客户端的锚适配器，读不了外端锚' }
+    }
+    let win: AnchorWindow
+    try {
+      win = await adapter.readWindow({ sessionId: source.sessionId, eventRange: source.eventRange }, args.window)
+    } catch (e) {
+      return { kind: 'unavailable', memoryId: args.memoryId, reason: `原始会话不可读（${e instanceof Error ? e.message : String(e)}）` }
+    }
+    return {
+      kind: 'ok', memoryId: args.memoryId, name: maskSecretSurface(record).name, sessionId: source.sessionId,
+      range: win.range, lines: win.events.map(ev => `- [${ev.seq}] ${ev.role}: ${ev.text}`), skipped: win.skipped,
+    }
+  }
+
   const readEvent = deps.getReadEvent()
-  if (!readEvent) return { kind: 'unavailable', memoryId: args.memoryId, reason: '会话查询服务未挂载' }
+  if (!readEvent) return { kind: 'unavailable', memoryId: args.memoryId, reason: deps.noHostReason ?? '会话查询服务未挂载' }
 
   const [start, end] = source.eventRange
   const request = sourceWindow({ ...record, source }, args.window)
