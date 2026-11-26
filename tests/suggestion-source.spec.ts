@@ -102,4 +102,18 @@ describe('处理建议的出处回查', () => {
     expect(await readSuggestionSources({ workspaces: [P, P, P], records: [mem('a'), handWritten, gone] }, readEvent)).toEqual([undefined, undefined, undefined])
     expect(await readSuggestionSources({ workspaces: [P, P], records: [mem('a'), mem('b')] }, null)).toEqual([undefined, undefined])
   })
+
+  it('外端锚与通道标识不在宿主事件流里：出处回查直接跳过，不调宿主（跨端出处走 memory_source）', async () => {
+    const { readEvent, asked } = sessions({})
+    const sources = await readSuggestionSources(
+      { workspaces: [P, P], records: [
+        mem('ext', { source: { sessionId: 'zcode:sess-ext', eventRange: [0, 4], sourceMode: 'user-explicit' } }),
+        mem('chan', { source: { sessionId: 'mcp:zcode', eventRange: [0, 0], sourceMode: 'user-explicit' } }),
+      ] },
+      readEvent,
+    )
+    expect(sources).toEqual([undefined, undefined])
+    expect(asked).toEqual([])
+  })
 })
+

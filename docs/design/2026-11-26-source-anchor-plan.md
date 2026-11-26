@@ -103,9 +103,10 @@
 - Modify: `src/gui/suggestion-source.ts`（外端锚与 `mcp:` 跳过，不调宿主）
 - Modify: `tests/source.spec.ts`、`tests/suggestion-source.spec.ts`、`tests/bindings.spec.ts`
 
-- [ ] 失败测试：`zcode:` 记录经适配器读到行、宿主 `readEvent` 不被调用；适配器缺席 → `unavailable`；DSH 原生锚的既有用例一条不改。
-- [ ] 实现到测试通过。
-- [ ] Commit `feat(source): dereference external anchors from DSH sessions`
+- [x] 失败测试：`zcode:` 记录经适配器读到行、宿主 `readEvent` 不被调用；适配器缺席 → `unavailable`（这两条在 Task 4 的 `source.spec` 前缀分发用例里已守）；绑定层透传加一条（bindings (d)）；DSH 原生锚的既有用例一条不改；建议回查对外端锚/`mcp:` 跳过且零宿主调用（suggestion-source 新例）。
+- [x] 实现到测试通过。偏差：环境翻译抽成两端共用的 `src/standalone/anchor-env.ts`（bin 动态加载，语义单源）；
+  DSH 侧定位器到第一次回读外端锚才建——首版在 apply 装载期 `existsSync` 被「加载期零磁盘 I/O」的 fs 追踪用例拦下，改为惰性。
+- [x] Commit `feat(source): dereference external anchors from DSH sessions`
 
 ## Task 6: doctor、文档、上线与实测
 

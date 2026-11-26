@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module'
-import { homedir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
@@ -67,24 +66,17 @@ interface AnchorEnvOptions {
   enabled?: boolean
   zcodeDir?: string
   antigravityDir?: string
+  log?: (line: string) => void
 }
 
-/**
- * 来源锚定位的环境翻译（spec §A3/§A6）：PLASTIC_ANCHOR=off 整个关掉；两端的根目录可各自用环境变量覆盖
- * 缺省根（~/.zcode/cli、~/.gemini/antigravity）。目录不存在由定位器自行按「不启用」处理，这里不探。
- */
-function anchorsFromEnv(): AnchorEnvOptions {
-  const off = process.env.PLASTIC_ANCHOR?.trim() === 'off'
-  if (off) stderrLog.info('来源锚定位已关闭（PLASTIC_ANCHOR=off）：写入维持 mcp:<client>')
-  const dir = (name: string, ...fallback: string[]): string => {
-    const value = process.env[name]?.trim() ?? ''
-    return value !== '' ? value : join(homedir(), ...fallback)
-  }
-  return {
-    enabled: !off,
-    zcodeDir: dir('PLASTIC_ZCODE_DIR', '.zcode', 'cli'),
-    antigravityDir: dir('PLASTIC_ANTIGRAVITY_DIR', '.gemini', 'antigravity'),
-  }
+/** 根包编译产物里的环境翻译入口（与 DSH 插件同一份语义）：起进程时动态加载。 */
+const ANCHOR_ENV_MODULE = 'dsh-plastic-memory/lib/standalone/anchor-env.js'
+type AnchorEnvModule = typeof import('dsh-plastic-memory/lib/standalone/anchor-env.js')
+
+/** 来源锚定位的环境翻译（§A3/§A6）：PLASTIC_ANCHOR=off 关掉，目录可用环境变量覆盖缺省根。 */
+async function anchorsFromEnv(): Promise<AnchorEnvOptions> {
+  const { anchorOptionsFromEnv } = await import(ANCHOR_ENV_MODULE).catch(() => fail(BUILD_HINT)) as AnchorEnvModule
+  return anchorOptionsFromEnv(process.env, line => stderrLog.info(line))
 }
 
 /** 根包编译产物里的上下文平面入口：两种模式都要它（存储 + 设置 + 类型表 + 快照 + 管线 + 检索）。 */
@@ -114,7 +106,7 @@ async function loadContextPlane(config: EnvConfig, anchors: AnchorEnvOptions): P
 
 async function runStdio(): Promise<void> {
   const config = resolveConfig()
-  const context = await loadContextPlane(config, anchorsFromEnv())
+  const context = await loadContextPlane(config, await anchorsFromEnv())
   const toolset = createMemoryTools(context)
   // 测试钩子整体替换 tools 的函数；处理器按属性现取，包装后的 save 照常生效
   toolset.tools = await withTestHoldLockIfRequested(toolset.tools, config.root)
@@ -189,7 +181,7 @@ async function main(argv: string[]): Promise<void> {
       // GUI 平面自带上下文平面（写锁在里面建）：/mcp 的工具与 /api/gui 的界面共用同一张文件表与同一份设置
       const gui = await createGuiPlane({
         memoryRoot: config.root, project: guiEnv.project, llm,
-        anchors: anchorsFromEnv(),
+        anchors: await anchorsFromEnv(),
         autoCheckup: guiEnv.autoCheckup, log: stderrLog,
       })
       // D8：自动体检要在后台花模型额度，是开是关必须留在启动日志里

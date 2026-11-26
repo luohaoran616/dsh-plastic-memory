@@ -484,6 +484,21 @@ describe('memory_source 绑定', () => {
     const result = await tool.execute({ memoryId: 'mem_s' }, exec)
     expectRenderClean(tool, { memoryId: 'mem_s' }, result)
   })
+
+  it('(d) 外端锚经 readExternal 透传到实现层：zcode 锚读到窗口行，宿主读事件不被调用', async () => {
+    const store = new MemoryStore(new InMemoryTable(), undefined, new InMemoryBatchKvTable())
+    await store.put(record({ id: 'mem_z', scope: 'workspace', workspacePath: '/proj', source: { sessionId: 'zcode:sess_x', eventRange: [2, 5], sourceMode: 'user-explicit' } }))
+    const tool = createSourceTool({
+      store, getReadEvent: () => null,
+      readExternal: scheme => (scheme === 'zcode'
+        ? { readWindow: async () => ({ events: [{ seq: 2, role: 'user', text: 'ZCode 里的原话' }], skipped: 0, range: [2, 5] }) }
+        : undefined),
+      host: { contextOf: async () => ({ workspacePath: '/proj' }) },
+    })
+    const result = await tool.execute({ memoryId: 'mem_z' }, exec)
+    expect((result as { kind: string }).kind).toBe('ok')
+    expect(jsonOk(result)).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
