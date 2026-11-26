@@ -16,11 +16,25 @@ node scripts/build-zcode-plugin.ts
 
 ## 安装
 
-ZCode 桌面端 Settings → Plugin Management → 本地目录 marketplace，指向
-`integrations/zcode/dist/plastic-memory`（或 `--out` 指定的目录）。装好后在会话里确认两件事：
+打包同时在产物目录的上一级写一份本地测试市场（`dist/marketplace.json`，source 指向 `./plastic-memory`）。
+ZCode 桌面端 Settings → Plugin Management → Discover → **+** 添加本地目录
+`integrations/zcode/dist`（即 marketplace.json 所在目录），然后在市场里安装 plastic-memory。
+装好后在会话里确认两件事：
 
-1. MCP 服务在：`tools/list` 里有六个 `memory_*`；
+1. MCP 服务在：Settings → MCP 里 `plugin:plastic-memory:plastic-memory` 已连接，`tools/list` 有六个 `memory_*`；
 2. hook 在：新开会话的第一条 user 消息之前有一条 `source.kind = plastic-memory` 的注入。
+
+**装好并确认之后**，再去掉用户配置里旧的 `plastic-memory` MCP 条目（两份并存会出两套同名工具；
+`config.json` 已先备份为 `config.json.bak-20261126-before-plastic-plugin`）。
+
+**模板展开的实证办法**：装好后开一个工作区会话，看服务进程的环境变量——
+
+```sh
+pgrep -f 'bin.js stdio' | head -1 | xargs -I{} tr '\0' '\n' < /proc/{}/environ | grep PLASTIC_PROJECT
+```
+
+官方文档（zcode-guide）写明模板 `${CLAUDE_PROJECT_DIR}` 等只对插件提供的 MCP 服务展开、配置文件的条目不展开；
+env 值按同一节理解，但以这条实测为准。不成立时按下面的回退办法。
 
 ## 模板变量（待实测）
 

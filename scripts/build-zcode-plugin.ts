@@ -12,7 +12,7 @@
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -67,12 +67,31 @@ function main(argv: readonly string[]): void {
   if (out === repo) {
     throw new Error(`输出目录不能是仓库根：${out}`)
   }
+  // 本地测试市场：Settings → Plugin Management → Discover → + 添加这个目录（out 的父目录），再安装插件
+  const marketplace = {
+    name: 'dev-plastic-memory-local',
+    plugins: [
+      {
+        name: 'plastic-memory',
+        source: `.${sep}${out.split(sep).pop()!}`,
+        version,
+        description: plugin.description,
+        displayName: 'plastic-memory',
+        displayName_i18n: { 'zh-CN': 'plastic-memory 记忆' },
+        description_i18n: { 'zh-CN': '六个 memory_* 工具（走与 DSH 插件同一条写入管线）+ 会话启动注入记忆快照' },
+        category: 'developer-tools',
+      },
+    ],
+  }
   void (async (): Promise<void> => {
     await rm(out, { recursive: true, force: true })
     await mkdir(join(out, '.zcode-plugin'), { recursive: true })
     await writeFile(join(out, '.zcode-plugin', 'plugin.json'), `${JSON.stringify(plugin, null, 2)}\n`)
     await writeFile(join(out, 'README.md'), `# plastic-memory（ZCode 插件）\n\n由 \`node scripts/build-zcode-plugin.ts\` 生成于 ${new Date().toISOString()}。\n安装、回退与实测说明见仓库 README 的「跨端接入」章与 integrations/zcode/README.md。\n`)
-    process.stdout.write(`ZCode 插件已生成：${out}\n  MCP: node ${bin} stdio\n  hook: node ${bin} hook-snapshot\n  记忆根: ${memoryRoot}\n`)
+    // 市场目录 = 产物目录的父目录（marketplace.json 的 source 相对它解析）
+    await mkdir(out, { recursive: true })
+    await writeFile(join(out, '..', 'marketplace.json'), `${JSON.stringify(marketplace, null, 2)}\n`)
+    process.stdout.write(`ZCode 插件已生成：${out}\n  市场（添加到 Discover）：${join(out, '..')}\n  MCP: node ${bin} stdio\n  hook: node ${bin} hook-snapshot\n  记忆根: ${memoryRoot}\n`)
   })().catch((error: unknown) => {
     process.stderr.write(`打包失败：${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
