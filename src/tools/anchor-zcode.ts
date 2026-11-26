@@ -75,7 +75,7 @@ export async function sweepOwnSidecars(dbPath: string, before: Sidecars): Promis
 }
 
 /** 客户端锚适配器：定位与开窗共用同一条只读打开路径，id 只进 SQL 参数、不进任何路径拼接。 */
-export function createZcodeAnchorAdapter(options: ZcodeAnchorOptions): AnchorAdapter {
+export function createZcodeAnchorAdapter(options: ZcodeAnchorOptions): AnchorAdapter & { probe(): Promise<ZcodeAnchorProbe> } {
   const dbPath = zcodeDbPath(options.zcodeDir)
   return {
     scheme: 'zcode',
@@ -99,6 +99,39 @@ export function createZcodeAnchorAdapter(options: ZcodeAnchorOptions): AnchorAda
         await close()
       }
     },
+    probe: () => probeDb(dbPath),
+  }
+}
+
+/** 锚探针的结果（anchor-doctor 用）：只报结构认不认得，不读任何内容。 */
+export interface ZcodeAnchorProbe {
+  dbExists: boolean
+  structureOk: boolean
+  onlineSessions: number
+  error?: string
+}
+
+/** 锚依赖的表与列：prepare 一条 LIMIT 0 的语句即可验证存在性，不扫描任何行。 */
+const STRUCTURE_CHECKS = [
+  'SELECT id, time_updated FROM session LIMIT 0',
+  'SELECT id, session_id, time_created, data, sequence FROM message LIMIT 0',
+  'SELECT id, message_id, session_id, data, sequence FROM part LIMIT 0',
+  'SELECT session_id, tool_call_id, tool_name, started_at FROM tool_usage LIMIT 0',
+  'SELECT session_id, owner_id, process_id FROM session_runtime_presence LIMIT 0',
+]
+
+/** 只读探针：库在不在、锚依赖的表列认不认得、在线会话数（presence 表只有在线行，很小）。 */
+async function probeDb(dbPath: string): Promise<ZcodeAnchorProbe> {
+  if (!existsSync(dbPath)) return { dbExists: false, structureOk: false, onlineSessions: 0 }
+  const { db, close } = await openReadonly(dbPath)
+  try {
+    for (const sql of STRUCTURE_CHECKS) db.prepare(sql)
+    const row = db.prepare('SELECT COUNT(*) AS n FROM session_runtime_presence').get() as Row | undefined
+    return { dbExists: true, structureOk: true, onlineSessions: typeof row?.n === 'number' ? row.n : 0 }
+  } catch (e) {
+    return { dbExists: true, structureOk: false, onlineSessions: 0, error: e instanceof Error ? e.message : String(e) }
+  } finally {
+    await close()
   }
 }
 

@@ -9,6 +9,7 @@ const PAGE_ROOTS = [
 ]
 const PLANE_ROOTS = [
   'src/standalone/plane.ts', 'src/standalone/host.ts', 'src/standalone/llm.ts', 'src/standalone/context.ts',
+  'src/standalone/anchor-env.ts', 'src/standalone/anchor-doctor.ts',
   'src/gui/commands.ts', 'src/gui/view-writer.ts', 'src/gui/checkup-suggestions.ts', 'src/gui/auto-checkup.ts',
   'src/governance/instructions.ts', 'src/type-registry.ts',
 ]

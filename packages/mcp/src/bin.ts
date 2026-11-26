@@ -73,6 +73,10 @@ interface AnchorEnvOptions {
 const ANCHOR_ENV_MODULE = 'dsh-plastic-memory/lib/standalone/anchor-env.js'
 type AnchorEnvModule = typeof import('dsh-plastic-memory/lib/standalone/anchor-env.js')
 
+/** 根包编译产物里的锚探针入口：anchor-doctor 子命令才动态加载。 */
+const ANCHOR_DOCTOR_MODULE = 'dsh-plastic-memory/lib/standalone/anchor-doctor.js'
+type AnchorDoctorModule = typeof import('dsh-plastic-memory/lib/standalone/anchor-doctor.js')
+
 /** 来源锚定位的环境翻译（§A3/§A6）：PLASTIC_ANCHOR=off 关掉，目录可用环境变量覆盖缺省根。 */
 async function anchorsFromEnv(): Promise<AnchorEnvOptions> {
   const { anchorOptionsFromEnv } = await import(ANCHOR_ENV_MODULE).catch(() => fail(BUILD_HINT)) as AnchorEnvModule
@@ -168,6 +172,12 @@ async function main(argv: string[]): Promise<void> {
       await runImportZcodeCli(argv.slice(1), stderrLog)
       return
     }
+    case 'anchor-doctor': {
+      // 锚探针（设计说明 §A6）：客户端升级后先跑它。只读、不读内容；探针红是数据不是故障，退出码恒 0
+      const { runAnchorDoctorCli } = await import(ANCHOR_DOCTOR_MODULE).catch(() => fail(BUILD_HINT)) as AnchorDoctorModule
+      await runAnchorDoctorCli()
+      return
+    }
     case 'serve': {
       const config = resolveConfig()
       // 动态加载：stdio 模式不为 HTTP / 静态托管背 node:fs 与 HTTP 路由的依赖
@@ -190,7 +200,7 @@ async function main(argv: string[]): Promise<void> {
       return
     }
     default:
-      fail(`未知子命令：${command}（可用：stdio（缺省）、serve、hook-snapshot、import-zcode）`)
+      fail(`未知子命令：${command}（可用：stdio（缺省）、serve、hook-snapshot、import-zcode、anchor-doctor）`)
   }
 }
 
