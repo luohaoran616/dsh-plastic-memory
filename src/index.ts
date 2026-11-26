@@ -155,7 +155,7 @@ export async function apply(ctx: Context, config: Config) {
     get: name => currentRegistry.get(name),
     has: name => currentRegistry.has(name),
     all: () => currentRegistry.all(),
-    renderSaveDescription: () => currentRegistry.renderSaveDescription(),
+    renderSaveDescription: surface => currentRegistry.renderSaveDescription(surface),
   }
 
   const memoryRoot = resolveMemoryRoot(config.memoryRoot)

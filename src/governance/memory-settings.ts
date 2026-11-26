@@ -427,7 +427,8 @@ export async function createSettingsRegistry(settings: MemorySettingsPort, log: 
     get: name => state.built.get(name),
     has: name => state.built.has(name),
     all: () => state.built.all(),
-    renderSaveDescription: () => state.built.renderSaveDescription(),
+    // surface 要原样转给背后的表：丢了它 MCP 工具面就会渲染出 DSH 的参数名（action/edits/content/scope）
+    renderSaveDescription: surface => state.built.renderSaveDescription(surface),
   }
   return {
     registry,

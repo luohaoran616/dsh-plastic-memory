@@ -277,3 +277,20 @@ describe('memory_source（独立端回查）', () => {
     }
   })
 })
+
+describe('memory_save 的工具描述（经真上下文平面注册出去的那一份）', () => {
+  it('用 MCP 的参数名：不带 DSH 工具面才有的 action / edits / content / scope / sourceMode', async () => {
+    const registered: Array<{ name: string; description: string }> = []
+    const fakeServer = {
+      registerTool: (name: string, def: { description: string }) => { registered.push({ name, description: def.description }) },
+    } as unknown as McpServer
+    await toolset.register(fakeServer)
+    const description = registered.find(t => t.name === 'memory_save')!.description
+    expect(description).toContain('更新已有记忆传 id 和 text')
+    expect(description).toContain('origin 填 agent-inferred')
+    // 2026-11-26 回归：转发对象曾把 surface 丢掉，MCP 面渲染出 DSH 的参数名，模型据此以为更新不可用
+    for (const dshOnly of ['action=update', '传 edits', '传 content', 'scope 默认填 workspace', 'sourceMode 填']) {
+      expect(description, dshOnly).not.toContain(dshOnly)
+    }
+  })
+})

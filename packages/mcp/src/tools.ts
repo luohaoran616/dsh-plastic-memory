@@ -277,8 +277,9 @@ function requestedProject(value: string | undefined): string | undefined {
 }
 
 /**
- * memory_save 的 text 参数说明：与 DSH content 参数里那段正文写法同一份文字，只去两处 DSH 工具面差异
- * （没有 edits 精确修改、没有 memory_source 回查）。tests/mcp-save-description.spec.ts 守它和源头的这份关系。
+ * memory_save 的 text 参数说明：与 DSH content 参数说明（type-registry 的 CONTENT_WRITING_GUIDE）是同一段正文写法，
+ * 只把开头那句 DSH 工具面专属的（整条替换 / edits）换成「记忆正文。」。memory_source 两面都有，回查那句照留。
+ * tests/mcp-save-description.spec.ts 守它和源头的这份关系。
  */
 export const MCP_TEXT_GUIDE = [
   '记忆正文。按所选类型说明里的「正文」写法组织：结论在前，类型说明里的「原因：」「依据：」「背景：」接在句号后面，同一段写完、不换行（类型说明没写正文写法的，写清事实和它的依据或情境）。',
@@ -286,7 +287,7 @@ export const MCP_TEXT_GUIDE = [
   '用自己的话概括清楚，去掉口语和语气词；补充说明直接写进句子，正文里不加括号补注：别名和缩写放进 tags，日期按对话里的精度写，对话里没提到的细节直接略过；人名、地名、数字、单位、命令和路径照原样写，不概括成类别；适用范围和确定程度照对话里的写。',
   '正文只写这件事本身：这条是用户告诉你的、什么时候记的，记录会自动保存；第三方出处（同事、文档、通知）照常写进正文或「依据：」；写记忆时的操作经过（写入被拒、重试）留在会话里。只写对话或资料里有依据的内容，不替用户编理由。',
   '怎么用由类型统一交代，正文里不另列泛泛的使用场景和注意事项；不写行号、临时路径这类很快过时的细节，改用稳定的位置描述。',
-  '提到别的记忆时写它的名称，不写记忆 id。',
+  '完整经过可以用 memory_source 回查，不用抄进正文。提到别的记忆时写它的名称，不写记忆 id。',
 ].join('')
 
 /** memory_save 描述的落盘段（project 的解析、"global" 的落法、更新的写法）。 */
