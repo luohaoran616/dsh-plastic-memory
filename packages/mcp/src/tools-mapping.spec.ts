@@ -185,3 +185,37 @@ describe('设置热更新与重注册', () => {
     expect(await toolset.register(fakeServer)).toBe(false)
   })
 })
+
+describe('memory_save 的来源锚', () => {
+  it('没配置锚时结果带通道标识 source（mcp:<client>、[0, 0]），模型与人都看得到没锚上', async () => {
+    const result = await saved({ title: '无锚写入', text: '无锚正文', origin: 'user-stated', type: 'knowledge' })
+    expect(result.source).toEqual({ sessionId: 'mcp:spec', eventRange: [0, 0], sourceMode: 'user-explicit' })
+  })
+
+  it('定位命中：结果与落盘记录带真锚；更新重新锚定到新会话', async () => {
+    const anchoredRoot = await mkdtemp(join(tmpdir(), 'pm-mcp-map-anchor-'))
+    try {
+      // 假适配器：第一发锚到 sess_aaa，之后锚到 sess_bbb（更新的重新锚定）
+      let current: { sessionId: string, eventRange: [number, number] } | undefined = { sessionId: 'zcode:sess_aaa', eventRange: [7, 9] }
+      const adapter = {
+        scheme: 'zcode' as const,
+        locateCall: async () => current,
+        readWindow: async () => { throw new Error('本用例不读窗') },
+      }
+      const { createContextPlane: create } = await import(CONTEXT_MODULE)
+      const anchoredPlane = await create({ memoryRoot: anchoredRoot, client: 'spec', project, anchors: { adapters: [adapter] } })
+      const anchoredTools = createMemoryTools(anchoredPlane)
+      const created = await anchoredTools.tools.save({ title: '带锚写入', text: '带锚正文', origin: 'user-stated', type: 'knowledge' })
+      if (!created.ok) throw new Error('应保存成功')
+      expect(created.source).toEqual({ sessionId: 'zcode:sess_aaa', eventRange: [7, 9], sourceMode: 'user-explicit' })
+      expect((await anchoredTools.tools.read({ id: created.id })).source).toMatchObject({ sessionId: 'zcode:sess_aaa', eventRange: [7, 9] })
+
+      current = { sessionId: 'zcode:sess_bbb', eventRange: [11, 12] }
+      const updated = await anchoredTools.tools.save({ title: '带锚写入', text: '改过的正文', origin: 'user-stated', id: created.id })
+      if (!updated.ok) throw new Error('应更新成功')
+      expect(updated.source).toEqual({ sessionId: 'zcode:sess_bbb', eventRange: [11, 12], sourceMode: 'user-explicit' })
+    } finally {
+      await rm(anchoredRoot, { recursive: true, force: true })
+    }
+  })
+})

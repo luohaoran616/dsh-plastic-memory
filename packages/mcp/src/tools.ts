@@ -36,8 +36,20 @@ export interface MemoryContextPort {
   search(input: SearchInput): Promise<SearchResult>
   /** 快照原文与用量（纯读）。workspacePath 缺省只带全局。 */
   snapshot(workspacePath: string | undefined): Promise<{ text: string } & SnapshotUsageShape>
-  /** 写入走与 DSH 同一条管线（入参与结果按形状声明，管线原样满足）。 */
-  save(input: ToolSaveInput, workspacePath: string | undefined, sessionId: string): Promise<ToolSaveOutcome>
+  /**
+   * 来源锚定位（写入侧，设计说明 §A2）：拿这次调用收到的 title/text 到客户端自己的会话存储里找
+   * 「刚刚发出这一次调用」的会话。缺省没有（不定位，维持 mcp:<client>）；上下文平面按选项装配。
+   */
+  locateAnchor?(args: { title: string; text: string }): Promise<AnchorLocation | undefined>
+  /** 写入走与 DSH 同一条管线（入参与结果按形状声明，管线原样满足它）。session 是锚定位的结果或通道标识。 */
+  save(input: ToolSaveInput, workspacePath: string | undefined, session: ToolSession): Promise<ToolSaveOutcome>
+}
+
+/** 写入的来源锚：定位命中 = 真会话 id + 该端自己的序号区间；没定位到 = `{ id: 'mcp:<client>' }`（管线按 [0, 0] 占位）。 */
+export interface ToolSession {
+  id: string
+  turnStartSeq?: number
+  lastSeq?: number
 }
 
 /** 写入入参的结构子集（插件管线的 SaveInput 原样满足它，多出的 edits 不影响赋值方向）。 */
@@ -59,10 +71,23 @@ export interface ToolSaveInput {
   confirmGlobal?: string
 }
 
+/** 锚定位的结果（写入侧）：真会话 id + 该端自己的序号区间；sourceMode 要等落盘时管线才填。 */
+export interface AnchorLocation {
+  sessionId: string
+  eventRange: [number, number]
+}
+
+/** 落盘记录的来源锚（管线填的机械事实）：谁在哪个客户端的哪个会话、哪一轮写的。 */
+export interface MemorySourceAnchor {
+  sessionId: string
+  eventRange: [number, number]
+  sourceMode: SourceMode
+}
+
 /** 写入结果的结构子集（插件管线的 PipelineResult 原样满足它）。 */
 export interface ToolSaveOutcome {
   kind: 'saved' | 'updated' | 'duplicate-suspected' | 'rejected'
-  record?: { id: string; globalCandidate?: boolean }
+  record?: { id: string; globalCandidate?: boolean; source?: MemorySourceAnchor }
   warnings?: ReadonlyArray<{ code: string; text: string }>
   existing?: ReadonlyArray<{ id: string; summary: string }>
   reason?: string
@@ -109,7 +134,7 @@ export interface MemorySaveInput {
 
 /** 写入结果：ok=false 时没有 id/path，改走 duplicate-suspected / rejected 的形状（与管线同码）。 */
 export type MemorySaveResult =
-  | { ok: true; kind: 'saved' | 'updated'; id: string; path: string; warnings?: string[]; promotion?: 'candidate' }
+  | { ok: true; kind: 'saved' | 'updated'; id: string; path: string; source?: MemorySourceAnchor; warnings?: string[]; promotion?: 'candidate' }
   | { ok: false; kind: 'duplicate-suspected'; existing: ReadonlyArray<{ id: string; summary: string }> }
   | { ok: false; kind: 'rejected'; reason: string }
 
@@ -309,6 +334,13 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
       }
     }
 
+    // 来源锚定位（spec §A2）：拿收到的原文（不 trim）去客户端存储里对「刚刚发出这一次调用」，对上才带真锚；
+    // 没配置、没对上、读不了都落到通道标识。对不上就不锚，任何失败都不挡写入。
+    const anchor = await context.locateAnchor?.({ title: input.title, text: input.text }) ?? undefined
+    const session: ToolSession = anchor !== undefined
+      ? { id: anchor.sessionId, turnStartSeq: anchor.eventRange[0], lastSeq: anchor.eventRange[1] }
+      : { id: `mcp:${context.client}` }
+
     const outcome = await context.save({
       action: base !== undefined ? 'update' : 'create',
       ...(input.id !== undefined ? { id: input.id } : {}),
@@ -324,13 +356,15 @@ export function createMemoryTools(context: MemoryContextPort, options: MemoryToo
       ...(input.validFrom !== undefined ? { validFrom: input.validFrom } : {}),
       ...(input.validTo !== undefined ? { validTo: input.validTo } : {}),
       ...(input.force === true ? { force: true } : {}),
-    }, workspacePath, `mcp:${context.client}`)
+    }, workspacePath, session)
     if (outcome.kind === 'saved' || outcome.kind === 'updated') {
       // create 不返回落盘路径（同名会追加 id 片段），写完按 id 定位一次拿准确文件路径
       const located = await context.store.locate(outcome.record!.id, { workspacePath })
       if (located === undefined) throw new Error(`写入后定位不到记录：${outcome.record!.id}`)
       return {
         ok: true, kind: outcome.kind, id: outcome.record!.id, path: located.filePath,
+        // source 原样透出（记录里恒有）：没锚上时是 mcp:<client> 与 [0, 0]，模型与人都看得到这次没锚上
+        source: outcome.record!.source,
         ...(outcome.warnings !== undefined && outcome.warnings.length > 0 ? { warnings: outcome.warnings.map(w => w.text) } : {}),
         ...(outcome.record!.globalCandidate === true ? { promotion: 'candidate' as const } : {}),
       }

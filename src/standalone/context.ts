@@ -24,6 +24,7 @@ import { runSavePipeline, type PipelineResult, type SaveInput } from '../pipelin
 import { prereadSnapshot } from '../runtime.ts'
 import { assembleSnapshot, type SnapshotUsage } from '../snapshot.ts'
 import type { TypeRegistry } from '../type-registry.ts'
+import { createAnchorLocator, type AnchorLocator, type AnchorLocatorOptions, type SourceAnchor } from '../tools/anchor.ts'
 import { goneCopies } from '../tools/workspace-gate.ts'
 
 /** 上下文平面的参数：记忆根必给；项目、客户端标识、日志、时钟、写锁可选（锁缺省自建一把，同进程多平面注入同一把）。 */
@@ -33,6 +34,8 @@ export interface ContextPlaneOptions {
   client?: string
   /** 各端配置里写死的那个项目（PLASTIC_PROJECT）：resolveProject 缺省时用它。不带时快照只带全局、save 无项目落点。 */
   project?: string
+  /** 来源锚定位的选项（bin 按环境翻译：开关 + 两端根目录）；缺省不定位，写入维持 mcp:<client>。 */
+  anchors?: AnchorLocatorOptions
   log?: MemoryLogger
   now?: () => number
   /** 记忆根写锁：注入则用注入的那把，缺省自建一把。 */
@@ -59,6 +62,8 @@ export interface ContextPlane {
   readonly decisions: PendingDecisionsStore
   readonly settings: MemorySettings
   readonly registry: TypeRegistry
+  /** 来源锚定位器（未配置时 undefined）；locateAnchor 的实现都在它里面。 */
+  readonly anchors: AnchorLocator | undefined
   /** 重读设置文档；场景与类型配置变了就重建类型表、回 true（MCP 工具面据此重注册工具）。 */
   refresh(): Promise<boolean>
   /**
@@ -66,11 +71,19 @@ export interface ContextPlane {
    * 缺省用装配时的 project；给定的必须是已存在目录的绝对路径，realpath 之后返回。
    */
   resolveProject(project?: string): Promise<string | undefined>
+  /**
+   * 来源锚定位（写入侧，设计说明 §A2）：拿 memory_save 收到的入参去客户端自己的会话存储里找
+   * 「刚刚发出这一次调用」的会话。未启用、没找到、读不了都回 undefined（定位器内部已记日志），不挡写入。
+   */
+  locateAnchor(args: { title: string, text: string }): Promise<SourceAnchor | undefined>
   search(input: SearchInput): Promise<SearchResult>
   /** 快照原文 + 用量。纯读：不冻结、不计召回、不跑目录维护（与 DSH 冻结快照的两点差别）。workspacePath 缺省只带全局。 */
   snapshot(workspacePath: string | undefined): Promise<{ text: string } & SnapshotUsage>
-  /** 写入走与 DSH 同一条管线（结构去重、疑似密钥拦截、更新、取代、有效期、快照先行）。 */
-  save(input: SaveInput, workspacePath: string | undefined, sessionId: string): Promise<PipelineResult>
+  /**
+   * 写入走与 DSH 同一条管线（结构去重、疑似密钥拦截、更新、取代、有效期、快照先行）。
+   * session 是来源锚：定位命中 = 真会话 id + [当轮起点, 保存时刻]；没定位到 = 通道标识 `{ id: 'mcp:<client>' }`。
+   */
+  save(input: SaveInput, workspacePath: string | undefined, session: { id: string, turnStartSeq?: number, lastSeq?: number }): Promise<PipelineResult>
 }
 
 /** 侧表四张的 schema 槽位（与 GUI 平面同一份）。 */
@@ -108,6 +121,8 @@ export async function createContextPlane(options: ContextPlaneOptions): Promise<
   const decisions = new PendingDecisionsStore(sidecar.pending, rootLock)
   const snapshots = new SnapshotStore(sidecar.snapshots, { findGone: goneCopies(store) })
   const search = createMemorySearch({ store, log })
+  // 来源锚定位器（每平面一把）：未配置 = 整个定位关掉，locateAnchor 恒回 undefined
+  const anchors = options.anchors === undefined ? undefined : createAnchorLocator(options.anchors)
   const resolveProject = async (project?: string): Promise<string | undefined> => {
     if (project === 'global') return undefined
     const requested = project ?? options.project
@@ -129,8 +144,10 @@ export async function createContextPlane(options: ContextPlaneOptions): Promise<
     decisions,
     settings,
     registry: backed.registry,
+    anchors,
     refresh: () => backed.refresh(),
     resolveProject,
+    locateAnchor: args => anchors === undefined ? Promise.resolve(undefined) : anchors.locate(args),
     search,
     snapshot: async workspacePath => {
       const pre = await prereadSnapshot(store, workspacePath)
@@ -148,12 +165,16 @@ export async function createContextPlane(options: ContextPlaneOptions): Promise<
         now: now(),
       })
     },
-    // 事件区间占位（独立端没有宿主事件流，证据锚按整会话兜底）；无子会话委派
-    save: (input, workspacePath, sessionId) => runSavePipeline(input, {
+    // 事件区间：定位命中时 session 带真锚（[当轮起点, 保存时刻]），没定位到按整会话占位（turnStartSeq 缺省 0）；无子会话委派
+    save: (input, workspacePath, session) => runSavePipeline(input, {
       store,
       registry: backed.registry,
       workspacePath,
-      session: { id: sessionId, lastSeq: 0 },
+      session: {
+        id: session.id,
+        lastSeq: session.lastSeq ?? 0,
+        ...(session.turnStartSeq === undefined ? {} : { turnStartSeq: session.turnStartSeq }),
+      },
       snapshots,
       decisions,
       now,

@@ -11,6 +11,7 @@ import {
   deletedViewSchema, libraryViewSchema, memoryCommandResultSchema, workspaceMapViewSchema,
 } from '../src/gui/contract.ts'
 import { createGuiPlane, standaloneInstructions } from '../src/standalone/plane.ts'
+import type { AnchorAdapter } from '../src/tools/anchor.ts'
 import { record } from './helpers/record.ts'
 
 // 无宿主装配：真实临时目录做记忆根，/memory 命令与视图文件都走 src/standalone/plane.ts 的那一套，
@@ -260,6 +261,26 @@ describe('createGuiPlane', () => {
       expect(await plane.snapshot('global')).toMatchObject({ status: 'ready' })
     } finally {
       await plane.dispose()
+    }
+  })
+
+  it('anchors 选项透传给上下文平面：locateAnchor 出锚；没配的平面回 undefined', async () => {
+    const adapter: AnchorAdapter = {
+      scheme: 'zcode',
+      locateCall: async () => ({ sessionId: 'zcode:sess_abc', eventRange: [3, 4] }),
+      readWindow: async () => { throw new Error('本用例不读窗') },
+    }
+    const anchored = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet, anchors: { adapters: [adapter] } })
+    try {
+      expect(await anchored.context.locateAnchor({ title: 't', text: 'x' })).toEqual({ sessionId: 'zcode:sess_abc', eventRange: [3, 4] })
+      const plain = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet })
+      try {
+        expect(await plain.context.locateAnchor({ title: 't', text: 'x' })).toBeUndefined()
+      } finally {
+        await plain.dispose()
+      }
+    } finally {
+      await anchored.dispose()
     }
   })
 })

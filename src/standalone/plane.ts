@@ -17,6 +17,7 @@ import {
   GUI_CHECKUP_VIEW_FILE, GUI_VIEW_DIR, GUI_VIEW_FILES, GUI_WORKSPACE_MAP_FILE, MEMORY_COMMAND_NAME,
 } from '../gui/contract.ts'
 import { ViewWriter, collectCheckupView, collectGlobalViews } from '../gui/view-writer.ts'
+import type { AnchorLocatorOptions } from '../tools/anchor.ts'
 import { createContextPlane, type ContextPlane } from './context.ts'
 import { createStandaloneHost } from './host.ts'
 
@@ -30,6 +31,8 @@ export interface GuiPlaneOptions {
   memoryRoot: string
   /** 各端配置里写死的那个项目（PLASTIC_PROJECT）；不带作用域的命令按它定位。 */
   project: string
+  /** 来源锚定位的选项（serve 模式经 bin 从环境翻译）；透传给上下文平面，/mcp 的写入随之带真锚。 */
+  anchors?: AnchorLocatorOptions
   llm?: SemanticLlm | null
   /** 缺省 false：不启动自动体检调度器（spec D8）。 */
   autoCheckup?: boolean
@@ -127,6 +130,7 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
   const context = await createContextPlane({
     memoryRoot, project, log, now,
     ...(options.lock === undefined ? {} : { lock: options.lock }),
+    ...(options.anchors === undefined ? {} : { anchors: options.anchors }),
   })
   const { sidecar, store, decisions, snapshots, registry, settings } = context
   const rootLock = context.lock

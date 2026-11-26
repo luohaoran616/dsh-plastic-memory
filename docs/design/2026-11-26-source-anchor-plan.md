@@ -76,9 +76,9 @@
 - `ContextPlane.save(input, workspacePath, session)`：`session` 是定位结果或缺省的 `{ id: 'mcp:<client>' }`；管线照原样算 `eventRange`。
 - `memory_save` 成功结果的 JSON 多一个 `source`（记录里的 `source` 原样）。
 
-- [ ] 失败测试：定位命中 → 落盘记录的 `source` 是 `zcode:sess_…` 与真实区间；定位不中 → `mcp:<client>`、`[0, 0]`，写入照常成功；定位抛错 → 同不中；更新同样重新锚定；`PLASTIC_ANCHOR=off` → 不定位。
-- [ ] 实现到测试通过。
-- [ ] Commit `feat(standalone): anchor memory_save to the calling session`
+- [x] 失败测试：定位命中 → 落盘记录的 `source` 是 `zcode:sess_…` 与真实区间；定位不中 → `mcp:<client>`、`[0, 0]`，写入照常成功；定位抛错 → 同不中；更新同样重新锚定；`PLASTIC_ANCHOR=off` → 不定位（context 6 例 + plane 透传 1 例 + mcp mapping 2 例；全量 4993 + mcp 76 绿）。
+- [x] 实现到测试通过。偏差：计划里说的「spec-helpers.ts 假上下文补两个成员」不存在——mcp 的两份 spec 用的都是真平面/真子进程，假适配器直接经 `anchors.adapters` 注入；端口的定位返回型是 `AnchorLocation`（无 sourceMode，落盘时管线才知道）。
+- [x] Commit `feat(standalone): anchor memory_save to the calling session`
 
 ## Task 4: 第七个工具 `memory_source`
 
