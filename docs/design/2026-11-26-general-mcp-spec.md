@@ -1,6 +1,6 @@
 # plastic-memory 通用 MCP：设置面、类型规则注入、快照带入（设计说明，2026-11-26）
 
-状态：已定稿（用户 2026-11-26 认可建议方向），待实施。实施计划见 [2026-11-26-general-mcp-plan.md](2026-11-26-general-mcp-plan.md)。
+状态：已实施并上线（2026-11-26，见 [exec-log-20261126.md](exec-log-20261126.md)）。实施计划见 [2026-11-26-general-mcp-plan.md](2026-11-26-general-mcp-plan.md)。
 
 ## 目标
 
