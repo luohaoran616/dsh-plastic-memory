@@ -26,11 +26,13 @@ import { useSettingsDraft, type MigrateType } from './useSettingsDraft.ts'
 
 const USAGE_FIELDS: ReadonlyArray<keyof SettingsFields> = ['budget', 'overflow', 'evidence']
 
-export function SettingsPage({ form, onOpenMemoryPage, now }: {
+export function SettingsPage({ form, onOpenMemoryPage, now, inert }: {
   form: ConfigForm
   /** 经导航 store 直达记忆页：状态卡给范围加视图，最近删除入口给旧目标。 */
   onOpenMemoryPage: (target: NavTarget) => void
   now?: number
+  /** 置灰说明：给出时「怎么管」的灵敏度与提升去处恒置灰、说明换成它（独立端没有消费者，值照存）。 */
+  inert?: string
 }) {
   const t = useT()
   const id = useId()
@@ -135,29 +137,29 @@ export function SettingsPage({ form, onOpenMemoryPage, now }: {
         <SettingsGroupCard title={t('settings.group.manage')}>
           <SettingsItem
             label={t('settings.sensitivity.label')}
-            hint={governanceOn ? t('settings.sensitivity.hint', { score: sensitivity.score, days: sensitivity.days }) : offHint}
-            disabled={!governanceOn}
+            hint={inert ?? (governanceOn ? t('settings.sensitivity.hint', { score: sensitivity.score, days: sensitivity.days }) : offHint)}
+            disabled={inert !== undefined || !governanceOn}
           >
             <SegmentedControl
               id={`${id}-sensitivity`}
               label={t('settings.sensitivity.label')}
               value={f.sensitivity}
               options={SENSITIVITIES.map(v => ({ value: v, label: t(`settings.sensitivity.${v}`) }))}
-              disabled={locked || !governanceOn}
+              disabled={locked || inert !== undefined || !governanceOn}
               onChange={(next) => { edit({ sensitivity: next }) }}
             />
           </SettingsItem>
           <SettingsItem
             label={t('settings.target.label')}
-            hint={!governanceOn ? offHint : f.promoteTarget === 'agents-md' ? t('settings.target.agentsHint') : t('settings.target.pluginHint')}
-            disabled={!governanceOn}
+            hint={inert ?? (!governanceOn ? offHint : f.promoteTarget === 'agents-md' ? t('settings.target.agentsHint') : t('settings.target.pluginHint'))}
+            disabled={inert !== undefined || !governanceOn}
           >
             <SegmentedControl
               id={`${id}-target`}
               label={t('settings.target.label')}
               value={f.promoteTarget}
               options={PROMOTE_TARGETS.map(v => ({ value: v, label: t(`settings.target.${v}`) }))}
-              disabled={locked || !governanceOn}
+              disabled={locked || inert !== undefined || !governanceOn}
               onChange={(promoteTarget) => { edit({ promoteTarget }) }}
             />
           </SettingsItem>

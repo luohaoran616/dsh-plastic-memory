@@ -1,0 +1,44 @@
+/*
+ * 独立页面自己的壳样式（页眉、视图切换按钮）。记忆页与设置页的样式各自由 slotCss('page') / slotCss('settings') 带，
+ * 这里只管根包词典里没有的那几个类。
+ */
+
+.webui-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.webui-back {
+  margin-right: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--pm-border, #d4d4d8);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.webui-back:hover {
+  background: var(--pm-hover, #f4f4f5);
+}
+
+.webui-lang {
+  padding: 4px 10px;
+  border: 1px solid var(--pm-border, #d4d4d8);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.webui-lang:hover {
+  background: var(--pm-hover, #f4f4f5);
+}
+
+.webui-body {
+  min-width: 0;
+}

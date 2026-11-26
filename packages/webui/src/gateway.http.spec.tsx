@@ -197,7 +197,8 @@ describe('页面侧 HTTP 网关', () => {
     const gateway = createHttpGateway({ fetch: fake.fetch })
     renderHook(() => gateway.useModel(SESSION, { shouldAsk: false }))
     await act(async () => { await Promise.resolve() })
-    expect(fake.calls).toHaveLength(0)
+    // 设置表单的初始读不算：这条用例管的是模型探测不发命令
+    expect(fake.calls.filter(call => call.path !== '/api/gui/settings')).toHaveLength(0)
   })
 
   it('挂载时刷新一次', async () => {
@@ -273,7 +274,8 @@ describe('页面侧 HTTP 网关', () => {
     ])
     const gateway = createHttpGateway({ fetch: fake.fetch })
     expect(await gateway.readFile('standalone', '/mem/a.md')).toBe('a')
-    expect(fake.calls[0]!.url).toContain('path=%2Fmem%2Fa.md')
+    const fileCall = fake.calls.find(call => call.path === `${GUI_API}/file`)!
+    expect(fileCall.url).toContain('path=%2Fmem%2Fa.md')
     expect(await gateway.readFile('standalone', '/mem/b.md')).toBeUndefined()
   })
 })

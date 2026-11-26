@@ -13,15 +13,25 @@ export type StandaloneLocale = 'zh' | 'en'
 export const LOCALE_KEY = 'plastic-memory.webui.locale'
 
 /** 本页面自己的文案键（上游词典里没有的）。 */
-export type StandaloneKey = 'webui.lang.switch'
+export type StandaloneKey = 'webui.lang.switch' | 'webui.back.memory' | 'webui.inert.manage'
 
 /** 翻译函数：上游的键，加上本页面自己的键。 */
 export type Translate = (key: LocaleKey | StandaloneKey, params?: Record<string, string | number>) => string
 
 /** 两份词典：上游那份加上本页面自己的一条。切换按钮写的是要切过去的那个语言。 */
 const DICTIONARIES: Record<StandaloneLocale, Record<LocaleKey, string> & Record<StandaloneKey, string>> = {
-  zh: { ...zh, 'webui.lang.switch': 'English' },
-  en: { ...en, 'webui.lang.switch': '中文' },
+  zh: {
+    ...zh,
+    'webui.lang.switch': 'English',
+    'webui.back.memory': '记忆页',
+    'webui.inert.manage': '独立端没有这些功能的消费者：值会保存，提醒灵敏度与提升去处只在 DSH 宿主里生效',
+  },
+  en: {
+    ...en,
+    'webui.lang.switch': '中文',
+    'webui.back.memory': 'Memory',
+    'webui.inert.manage': 'Nothing on the standalone server consumes these: values are saved, but sensitivity and promotion only take effect in the DSH host',
+  },
 }
 
 /** 读出上次选的语言；没有或认不出就是中文。存储不可用时也是中文。 */
@@ -47,7 +57,10 @@ export function useStandaloneTranslate(): { t: Translate; locale: StandaloneLoca
   const t = useMemo<Translate>(() => {
     const dict = DICTIONARIES[locale]
     const base = createTranslator(dict)
-    return (key, params) => (key === 'webui.lang.switch' ? dict[key] : base(key, params))
+    return (key, params) => {
+      if (key === 'webui.lang.switch' || key === 'webui.back.memory' || key === 'webui.inert.manage') return dict[key]
+      return base(key, params)
+    }
   }, [locale])
   return { t, locale, setLocale }
 }

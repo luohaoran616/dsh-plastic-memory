@@ -9,9 +9,12 @@
  * 独立装配只有一个会话（standalone）、没有配置面、没有归属对照：会话恒定就绪，配置恒缺省。
  * 视图还没生成或版本不认识时自动请服务端重写一次（`refresh-views`）再读，仍不认识就停在过时，不轮询。
  */
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { encodeMemoryCommand, VIEW_BEHIND_CODES, type DeletedView, type LibraryView } from '@plastic/core/gui/contract.ts'
 import { createDeletionStore } from 'dsh-plastic-memory/client/deletions.ts'
+import { toPluginConfig } from 'dsh-plastic-memory/client/settings/config.ts'
+import type { ConfigForm } from 'dsh-plastic-memory/client/host.ts'
+import { createHttpConfigForm } from './config-form.http.ts'
 import {
   decodeExecution, parseView,
   type BorrowedSession, type CurrentWorkspace, type MemoryGateway, type ModelState, type ViewMap, type ViewName, type ViewState,
@@ -24,6 +27,8 @@ export const GUI_API = '/api/gui'
 export interface HttpGatewayOptions {
   /** 缺省用全局 fetch；测试注入假 fetch。 */
   fetch?: typeof fetch
+  /** 设置表单：缺省自建一个 HTTP 的；测试注入假的（与设置视图共用同一份时从外面给）。 */
+  form?: ConfigForm
 }
 
 /** 独立装配的会话 id：没有真会话，命令与视图都走这一个。 */
@@ -63,6 +68,8 @@ function toCommandResult(payload: unknown): CommandExecution['result'] | undefin
 /** 页面侧 HTTP 网关：按 MemoryGateway 的形状包住 `/api/gui/*`，独立页面用它读视图、发命令、管删除状态。 */
 export function createHttpGateway(options: HttpGatewayOptions = {}): MemoryGateway {
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis)
+  // 设置单源：useConfig、setConfig 与设置视图（App 注入同一个 form）读改的都是它
+  const configForm = options.form ?? createHttpConfigForm(options.fetch === undefined ? {} : { fetch: options.fetch })
 
   /** 一次请求：网络错误与 HTTP 错误都折成失败，不抛。status 为 0 表示没到服务端。 */
   async function request(path: string, init: { method?: string; body?: unknown } = {}): Promise<{ ok: boolean; status: number; text: string }> {
@@ -265,12 +272,16 @@ export function createHttpGateway(options: HttpGatewayOptions = {}): MemoryGatew
     },
 
     useConfig() {
-      return undefined
+      const snapshot = useSyncExternalStore(configForm.subscribe, configForm.getSnapshot)
+      return useMemo(() => snapshot.status === 'ready' ? toPluginConfig(snapshot.value) : undefined, [snapshot])
     },
 
-    async setConfig() {
-      // 独立装配没有配置面：没有可写的字段
-      return false
+    async setConfig(field, value) {
+      try {
+        return await configForm.set(field, value)
+      } catch {
+        return false
+      }
     },
 
     async readFile(_sessionId, path) {
