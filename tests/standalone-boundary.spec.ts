@@ -5,7 +5,7 @@ import { importClosure } from './helpers/import-closure.ts'
 // 界面闭包不碰宿主运行时，无宿主装配闭包不碰框架运行时，也不把插件入口与工具绑定层拖进来。
 const PAGE_ROOTS = ['client/MemoryPage.tsx', 'client/ui/PanelShell.tsx', 'client/styles.ts', 'client/gateway.ts']
 const PLANE_ROOTS = [
-  'src/standalone/plane.ts', 'src/standalone/host.ts', 'src/standalone/llm.ts',
+  'src/standalone/plane.ts', 'src/standalone/host.ts', 'src/standalone/llm.ts', 'src/standalone/context.ts',
   'src/gui/commands.ts', 'src/gui/view-writer.ts', 'src/gui/checkup-suggestions.ts', 'src/gui/auto-checkup.ts',
   'src/governance/instructions.ts', 'src/type-registry.ts',
 ]

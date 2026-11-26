@@ -95,28 +95,20 @@ function sessionOf(scope: QueryScope): SessionTarget {
   return { workspacePath: scope.kind === 'global' ? undefined : scope.workspacePath }
 }
 
-export async function createMemoryCore(opts: MemoryCoreOptions): Promise<MemoryCore> {
-  const log = opts.log ?? console
-  const root = resolveMemoryRoot(opts.root)
-  // 一个进程实例一把，注入文件表与侧表：同实例内按持有计数嵌套，与其他进程（DSH 插件、另一个 MCP 进程）经锁库互斥
-  const lock = opts.lock ?? createRootLock({ root, log })
-  const sidecar = new SidecarStore({
-    root,
-    lock,
-    schemas: {
-      snapshots: UNUSED_SIDE_TABLE,
-      pending: UNUSED_SIDE_TABLE,
-      scanCache: UNUSED_SIDE_TABLE,
-      adviceIgnores: UNUSED_SIDE_TABLE,
-    },
-    log,
-  })
-  // 索引行不注入格式器：FileTable 的缺省就是 core 的 formatIndexLine，行末带同目录文件名。
-  // 插件那版要读类型注册表决定 passive 标注，core 没有类型注册表。
-  const table = new FileTable({ root, lock, stats: sidecar.recallStats, log })
-  const store = new MemoryStore(table, log, sidecar.recallStats)
+/** 检索的组装依赖：一个读好记录的 store 加可选日志。 */
+export interface MemorySearchDeps {
+  store: MemoryStore
+  /** 缺省回退 console（jieba 首次加载的提示走它）。 */
+  log?: MemoryLogger
+}
 
-  const search = async (input: SearchInput): Promise<SearchResult> => {
+/**
+ * 检索函数：与插件检索同一条读路径（按范围读目录 → 同 id 取舍 → active → validTo → 打分排序）。
+ * 作用域由入参定（project 优先，缺省按可见集合），工厂与 MCP 工具面共用这一份。
+ */
+export function createMemorySearch(deps: MemorySearchDeps): (input: SearchInput) => Promise<SearchResult> {
+  const log = deps.log ?? console
+  return async (input: SearchInput): Promise<SearchResult> => {
     // 查询与记录两侧共用这一个分词器：查询含汉字时是 jieba 档（首次搜索才加载），否则 bigram
     const tokenize = await tokenizerForQuery(input.query, { log })
     // 新 token 定前两档并打分；旧词项（expandQueryTerms）给第三档，兜住 id 这类不打分字段的子串命中
@@ -132,7 +124,7 @@ export async function createMemoryCore(opts: MemoryCoreOptions): Promise<MemoryC
     const session = sessionOf(scope)
     const now = Date.now()
     // 与插件检索同一条读路径：按范围读目录 → 同 id 取舍 → active → validTo（过期的不进检索）
-    const read = await store.readRaw(scope, prefilter)
+    const read = await deps.store.readRaw(scope, prefilter)
     const located = resolveLiveFirst(read.records, session)
       .filter(l => l.record.status === 'active' && withinValidity(l.record, now))
     const records = located.map(l => l.record)
@@ -156,6 +148,30 @@ export async function createMemoryCore(opts: MemoryCoreOptions): Promise<MemoryC
       })),
     }
   }
+}
+
+export async function createMemoryCore(opts: MemoryCoreOptions): Promise<MemoryCore> {
+  const log = opts.log ?? console
+  const root = resolveMemoryRoot(opts.root)
+  // 一个进程实例一把，注入文件表与侧表：同实例内按持有计数嵌套，与其他进程（DSH 插件、另一个 MCP 进程）经锁库互斥
+  const lock = opts.lock ?? createRootLock({ root, log })
+  const sidecar = new SidecarStore({
+    root,
+    lock,
+    schemas: {
+      snapshots: UNUSED_SIDE_TABLE,
+      pending: UNUSED_SIDE_TABLE,
+      scanCache: UNUSED_SIDE_TABLE,
+      adviceIgnores: UNUSED_SIDE_TABLE,
+    },
+    log,
+  })
+  // 索引行不注入格式器：FileTable 的缺省就是 core 的 formatIndexLine，行末带同目录文件名。
+  // 插件那版要读类型注册表决定 passive 标注，core 没有类型注册表。
+  const table = new FileTable({ root, lock, stats: sidecar.recallStats, log })
+  const store = new MemoryStore(table, log, sidecar.recallStats)
+
+  const search = createMemorySearch({ store, log })
 
   return {
     client: opts.client,

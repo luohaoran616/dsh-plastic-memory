@@ -94,6 +94,8 @@ export const FALLBACK_POLICY: Omit<MemoryTypeDefinition, 'name' | 'label' | 'des
 
 // 通用层：跨类型的原则、写法、负向规则。各类型记什么（description）、什么时候记（whenToSave）由 renderSaveDescription 拼在其后；
 // 带入后怎么用（howToUse）不在这里，在注入快照里贴着记忆写（snapshot.ts）。
+// 两份通用层文字：DSH 面是原文（界面展示、action/edits、sourceMode、scope 是它的参数名）；MCP 面只差
+// 参数名与两处工具面差异（没有界面展示、没有 edits，更新走 id + text），其余逐句相同。
 const SAVE_GUIDE = `记录跨会话有价值的信息，主动做、不必等用户开口。守门一问：未来的我会不会因为这条记忆做得更好？会，才记。
 记忆在做事过程中顺手记，界面会把这轮写入的记忆展示给用户。回复只回应用户说的内容，不要特意说「记下了」，也不提记忆 id、类型这些内部信息。用户明确要你记住某件事时，按最贴合的类型马上记下内容本身，只在这时简短应一句，比如「好，我记下来了」。
 你自己推断出的结论也可以记，sourceMode 填 agent-inferred。
@@ -103,11 +105,30 @@ const SAVE_GUIDE = `记录跨会话有价值的信息，主动做、不必等用
 更新已有记忆传 action=update 和目标 id，别重复新增；旧说法要留档时（比如决定改了），新建一条、supersedes 填旧记忆的 id。只改其中几处时传 edits：oldString 从当前正文原样摘取、只命中一处，其余正文和没传的字段保持原样；要重新组织整条时才传 content，它会替换整条正文。两种写法都要先读过目标记忆的全文。
 scope 默认填 workspace（只对当前项目）。用户明说所有项目都适用的填 global：这条会先存进当前项目、标成全局提升候选，用户在治理时确认后才提升到全局。更新全局记忆时，只并入对所有项目都成立的内容；只对当前项目成立的（用户说「这个仓库」「这个项目」），新建一条 workspace 记忆，全局那条保持原样。`
 
+const SAVE_GUIDE_MCP = `记录跨会话有价值的信息，主动做、不必等用户开口。守门一问：未来的我会不会因为这条记忆做得更好？会，才记。
+记忆在做事过程中顺手记。回复只回应用户说的内容，不要特意说「记下了」，也不提记忆 id、类型这些内部信息。用户明确要你记住某件事时，按最贴合的类型马上记下内容本身，只在这时简短应一句，比如「好，我记下来了」。
+你自己推断出的结论也可以记，origin 填 agent-inferred。
+长任务边做边记：定下的方案和决定、目标、影响后续安排的进展，趁上下文还没被压缩就记下。
+相对时间（「上周」「最近」）落库时换成具体日期，否则日后失效；确定不了具体日期的保留原来的精度（如「2026 年夏天」），不编日期；变更类信息（从 A 换成 B）连旧状态和原因一起记。
+不记：只在本次会话有用的进度和状态、还没落地的探索、你自己未被采纳的提议、已写在 AGENTS.md/CLAUDE.md 里的内容、当前项目里随时能重新读到的代码和文件内容、找不到依据的猜测；别从姓名或上下文推断用户没明说的属性（性别、年龄等）。
+更新已有记忆传 id 和 text（整条正文），别重复新增；旧说法要留档时（比如决定改了），新建一条、supersedes 填旧记忆的 id。更新之前要先读过目标记忆的全文。
+project 的解析见工具说明的「落盘」段。用户明说所有项目都适用的传 "global"：这条会先存进当前项目、标成全局提升候选，用户在治理时确认后才提升到全局。更新全局记忆时，只并入对所有项目都成立的内容；只对当前项目成立的（用户说「这个仓库」「这个项目」），新建一条项目记忆，全局那条保持原样。`
+
+/** memory_save 工具面的差异标记：DSH（宿主插件）与 MCP（独立 server）。 */
+export type SaveDescriptionSurface = 'dsh' | 'mcp'
+
+/**
+ * 正文写法（DSH memory_save 的 content 参数说明，不含结尾的必填提示）：
+ * save-tool 引它拼回原描述（逐字不变），MCP 工具面的 text 参数按同一份写法组织说明。
+ */
+export const CONTENT_WRITING_GUIDE = `整条正文，会替换原来的全部正文；只改其中几处用 edits。按所选类型说明里的「正文」写法组织：结论在前，类型说明里的「原因：」「依据：」「背景：」接在句号后面，同一段写完、不换行（类型说明没写正文写法的，写清事实和它的依据或情境）。用第三人称陈述句并标明主体（「用户…」「项目定了…」），提到用户时每次都写「用户」，不用「他」「她」代称，日后读到时能和用户当下的话分开。用自己的话概括清楚，去掉口语和语气词；补充说明直接写进句子，正文里不加括号补注：别名和缩写放进 tags，日期按对话里的精度写，对话里没提到的细节直接略过；人名、地名、数字、单位、命令和路径照原样写，不概括成类别；适用范围和确定程度照对话里的写。正文只写这件事本身：这条是用户告诉你的、什么时候记的，记录会自动保存；第三方出处（同事、文档、通知）照常写进正文或「依据：」；写记忆时的操作经过（写入被拒、重试）留在会话里。只写对话或资料里有依据的内容，不替用户编理由。怎么用由类型统一交代，正文里不另列泛泛的使用场景和注意事项；不写行号、临时路径这类很快过时的细节，改用稳定的位置描述。完整经过可以用 memory_source 回查，不用抄进正文。提到别的记忆时写它的名称，不写记忆 id。`
+
 export interface TypeRegistry {
   get(name: string): MemoryTypeDefinition
   has(name: string): boolean
   all(): MemoryTypeDefinition[]
-  renderSaveDescription(): string
+  /** 写侧规则（通用层 + 各类型记什么、什么时候记）。surface 缺省 dsh，输出与历史逐字相同。 */
+  renderSaveDescription(surface?: SaveDescriptionSurface): string
 }
 
 /** buildTypeRegistry 的结果：类型表本身，外加场景配置有问题时的警告（由调用方打日志）。 */
@@ -178,9 +199,10 @@ export function buildTypeRegistry(config: TypeRegistryConfig): BuiltTypeRegistry
     get: name => map.get(name) ?? pool.get(name) ?? retired.get(name) ?? { name, label: name, description: '', ...FALLBACK_POLICY },
     has: name => map.has(name),
     all: () => [...map.values()],
-    renderSaveDescription() {
+    renderSaveDescription(surface: SaveDescriptionSurface = 'dsh') {
+      const guide = surface === 'mcp' ? SAVE_GUIDE_MCP : SAVE_GUIDE
       const lines = [...map.values()].map(t => `- ${t.name}（${t.label}）：${t.description}\n  什么时候记：${t.whenToSave}`)
-      return `${SAVE_GUIDE}\n\n各类型记什么、什么时候记：\n${lines.join('\n')}`
+      return `${guide}\n\n各类型记什么、什么时候记：\n${lines.join('\n')}`
     },
   }
 }
