@@ -223,4 +223,43 @@ describe('createGuiPlane', () => {
       await plane.dispose()
     }
   })
+
+  it('设置：读回出厂值与版本号 0；提交后版本号加一且类型表已重建', async () => {
+    const plane = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet })
+    try {
+      const fresh = await plane.readSettings()
+      expect(fresh).toMatchObject({ status: 'ready', revision: 0, writable: true })
+      if (fresh.status !== 'ready') throw new Error('应是 ready')
+      expect(fresh.value.snapshotTokenBudget).toBe(4000)
+
+      const done = await plane.mutateSettings([{ op: 'set', path: ['template'], value: 'coding' }])
+      expect(done).toMatchObject({ ok: true, revision: 1 })
+      // 转发类型表已换到新场景；再读设置看到新版本号与显式改动
+      expect(plane.context.registry.has('procedure')).toBe(true)
+      const next = await plane.readSettings()
+      expect(next).toMatchObject({ status: 'ready', revision: 1 })
+      if (next.status === 'ready') expect(next.value.template).toBe('coding')
+    } finally {
+      await plane.dispose()
+    }
+  })
+
+  it('快照：缺省用装配的项目；不存在的路径回 bad-project', async () => {
+    const plane = await createGuiPlane({ memoryRoot: root, project: PROJECT, log: quiet })
+    try {
+      const snap = await plane.snapshot()
+      expect(snap.status).toBe('ready')
+      if (snap.status !== 'ready') throw new Error('应是 ready')
+      expect(snap.usedTokens).toBeGreaterThanOrEqual(0)
+      expect(snap.injectedCount).toBe(0)
+      // 空记忆根：冷启动文案
+      expect(snap.text).toContain('记忆库当前为空')
+      expect(await plane.snapshot(join(root, 'no-such-dir'))).toMatchObject({ status: 'bad-project' })
+      expect(await plane.snapshot('relative')).toMatchObject({ status: 'bad-project' })
+      // global 合法：只带全局
+      expect(await plane.snapshot('global')).toMatchObject({ status: 'ready' })
+    } finally {
+      await plane.dispose()
+    }
+  })
 })

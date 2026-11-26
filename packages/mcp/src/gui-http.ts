@@ -15,6 +15,27 @@ import { sendJson } from './http-util.ts'
  * 响应一律走 http-util.ts 的 sendJson；sendError 只写扁平的 `{ error: string }`，表达不了这里的码。
  */
 
+/** 设置路径操作（与插件 memory-settings.ts 的 SettingsPathOp 同形；端口按结构匹配，mcp 包不 import 插件源码）。 */
+export type SettingsPathOp =
+  | { op: 'set'; path: string[]; value: unknown }
+  | { op: 'unset'; path: string[] }
+
+/** 设置快照（GET 的响应体）：unavailable = 坏文件或语义不对，页面按不可用显示、写入被拒。 */
+export type SettingsSnapshot =
+  | { status: 'ready'; revision: number; value: unknown; writable: true }
+  | { status: 'unavailable'; reason: 'corrupt' | 'invalid'; detail: string }
+
+export type SettingsMutateResult =
+  | { ok: true; value: unknown; revision: number }
+  | { ok: false; reason: 'conflict'; current?: { revision: number; value: unknown } }
+  | { ok: false; reason: 'invalid'; issues: string[] }
+  | { ok: false; reason: 'unavailable'; detail: string }
+
+/** 快照端点的平面结果（与插件 plane.ts 的 GuiSnapshotResult 同形）。 */
+export type GuiSnapshotResult =
+  | { status: 'ready'; text: string; usedTokens: number; injectedCount: number }
+  | { status: 'bad-project'; project?: string }
+
 /** GUI 平面的 HTTP 侧形状：Task 3 的 GuiPlane 结构一致，bin.ts 直接赋值由 typecheck 证明。 */
 export interface GuiPlanePort {
   memoryRoot: string
@@ -22,6 +43,9 @@ export interface GuiPlanePort {
   readView(name: string): Promise<{ status: 'ready'; text: string } | { status: 'missing' }>
   readFile(path: string): Promise<string | undefined>
   openPath(path: string, action: 'open' | 'reveal'): Promise<boolean>
+  readSettings(): Promise<SettingsSnapshot>
+  mutateSettings(ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<SettingsMutateResult>
+  snapshot(project?: string): Promise<GuiSnapshotResult>
   dispose(): Promise<void>
 }
 
@@ -29,6 +53,8 @@ const COMMANDS_PATH = '/api/gui/commands'
 const VIEWS_PREFIX = '/api/gui/views/'
 const FILE_PATH = '/api/gui/file'
 const OPEN_PATH = '/api/gui/open'
+const SETTINGS_PATH = '/api/gui/settings'
+const SNAPSHOT_PATH = '/api/gui/snapshot'
 
 /** 可读视图名：四个全局视图由契约给，体检视图与会话归属视图与它们并列（Task 3 的 GuiViewName）。 */
 const VIEW_NAMES: ReadonlySet<string> = new Set([...Object.keys(GUI_VIEW_FILES), 'checkups', 'workspaces'])
@@ -214,6 +240,70 @@ async function handleFile(plane: GuiPlanePort, res: ServerResponse, url: URL): P
   sendJson(res, 200, { text })
 }
 
+/** `GET /api/gui/settings`：设置快照原样回（ready 与 unavailable 都是 200，页面按 status 分支）。 */
+async function handleReadSettings(plane: GuiPlanePort, res: ServerResponse): Promise<void> {
+  sendJson(res, 200, await plane.readSettings())
+}
+
+/** `POST /api/gui/settings` 的请求体：ops 必须是操作数组，expectedRevision 可选正数或 0。 */
+function parseSettingsBody(body: Record<string, unknown>): { ops: SettingsPathOp[]; expectedRevision?: number } | { error: string } {
+  const rawOps = body.ops
+  if (!Array.isArray(rawOps)) return { error: 'ops 必须是操作数组' }
+  const ops: SettingsPathOp[] = []
+  for (const [i, raw] of rawOps.entries()) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { error: `ops[${i}] 必须是对象` }
+    const op = raw as Record<string, unknown>
+    if (op.op !== 'set' && op.op !== 'unset') return { error: `ops[${i}].op 只能是 set 或 unset` }
+    if (!Array.isArray(op.path) || op.path.length === 0 || !op.path.every(seg => typeof seg === 'string' && seg !== '')) {
+      return { error: `ops[${i}].path 必须是非空字符串数组` }
+    }
+    if (op.op === 'set') ops.push({ op: 'set', path: op.path as string[], value: op.value })
+    else ops.push({ op: 'unset', path: op.path as string[] })
+  }
+  const rawRevision = body.expectedRevision
+  if (rawRevision !== undefined && (typeof rawRevision !== 'number' || !Number.isSafeInteger(rawRevision) || rawRevision < 0)) {
+    return { error: 'expectedRevision 必须是非负整数' }
+  }
+  return { ops, ...(rawRevision === undefined ? {} : { expectedRevision: rawRevision }) }
+}
+
+/** `POST /api/gui/settings`：提交一批操作；冲突 409、内容不合法 400、坏文件 409（settings/unavailable），都不写。 */
+async function handleMutateSettings(plane: GuiPlanePort, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readJsonBody(req, res)
+  if (body === undefined) return
+  const parsed = parseSettingsBody(body)
+  if ('error' in parsed) {
+    sendGuiError(res, 400, 'settings/bad-request', parsed.error)
+    return
+  }
+  const result = await plane.mutateSettings(parsed.ops, parsed.expectedRevision)
+  if (result.ok) {
+    sendJson(res, 200, { status: 'ready', revision: result.revision, value: result.value, writable: true })
+    return
+  }
+  if (result.reason === 'conflict') {
+    sendGuiError(res, 409, 'settings/conflict', `版本号对不上：请重读设置后再提交${result.current === undefined ? '' : `（当前 ${result.current.revision}）`}`,
+      result.current === undefined ? {} : { 'x-plastic-settings-revision': String(result.current.revision) })
+    return
+  }
+  if (result.reason === 'invalid') {
+    sendGuiError(res, 400, 'settings/invalid', `设置不合法：${result.issues.join('；')}`)
+    return
+  }
+  sendGuiError(res, 409, 'settings/unavailable', result.detail)
+}
+
+/** `GET /api/gui/snapshot`：快照原文与用量；project 缺省用装配的项目，不存在或非绝对路径 400。 */
+async function handleSnapshot(plane: GuiPlanePort, res: ServerResponse, url: URL): Promise<void> {
+  const project = url.searchParams.get('project') ?? undefined
+  const snap = await plane.snapshot(project === undefined || project === '' ? undefined : project)
+  if (snap.status === 'bad-project') {
+    sendGuiError(res, 400, 'snapshot/bad-project', `project 必须是已存在目录的绝对路径${snap.project === undefined ? '' : `：${snap.project}`}`)
+    return
+  }
+  sendJson(res, 200, { text: snap.text, usedTokens: snap.usedTokens, injectedCount: snap.injectedCount })
+}
+
 /** 路径归它管时处理并返回 true。allowedOrigin 是服务自己的来源（如 http://127.0.0.1:7788）。 */
 export async function handleGuiRequest(plane: GuiPlanePort, req: IncomingMessage, res: ServerResponse, url: URL, allowedOrigin: string): Promise<boolean> {
   const path = url.pathname
@@ -223,6 +313,19 @@ export async function handleGuiRequest(plane: GuiPlanePort, req: IncomingMessage
   }
   if (path === OPEN_PATH) {
     if (allowMethod(req, res, 'POST') && acceptJsonWrite(req, res, allowedOrigin)) await handleOpen(plane, req, res)
+    return true
+  }
+  if (path === SETTINGS_PATH) {
+    if (req.method === 'GET') await handleReadSettings(plane, res)
+    else if (req.method === 'POST') {
+      if (acceptJsonWrite(req, res, allowedOrigin)) await handleMutateSettings(plane, req, res)
+    } else {
+      sendGuiError(res, 405, 'gui/method', `方法不允许：${req.method ?? ''}`, { allow: 'GET, POST' })
+    }
+    return true
+  }
+  if (path === SNAPSHOT_PATH) {
+    if (allowMethod(req, res, 'GET')) await handleSnapshot(plane, res, url)
     return true
   }
   if (path === FILE_PATH) {

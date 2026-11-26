@@ -1,23 +1,15 @@
 import { spawn } from 'node:child_process'
 import { readFile as readText, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
-import { formatIndexLine } from '@plastic/core/index-line.ts'
 import type { RootLock } from '@plastic/core/root-lock.ts'
 import { agentsMdPath, createAgentsMdWriter } from '@plastic/core/storage/agents-md.ts'
-import { FileTable } from '@plastic/core/storage/file-table.ts'
-import { createRootLock } from '@plastic/core/storage/root-lock.ts'
-import { SidecarStore } from '@plastic/core/storage/sidecar.ts'
-import { MemoryStore, type MemoryLogger } from '@plastic/core/store.ts'
-import { buildTypeRegistry, PRESET_SCENES } from '../type-registry.ts'
+import type { MemoryLogger } from '@plastic/core/store.ts'
 import { AutoCheckupSettingStore } from '../governance/auto-checkups.ts'
 import { AdviceIgnoreStore } from '../governance/advice-ignores.ts'
 import { CheckupRecordStore } from '../governance/checkup-records.ts'
-import { PendingDecisionsStore } from '../governance/decisions.ts'
+import type { MemorySettingsMutateResult, MemorySettingsSnapshot, SettingsPathOp } from '../governance/memory-settings.ts'
 import { createInstructionReader, type ReadInstructions } from '../governance/instructions.ts'
-import { adviceIgnoreSchema, memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema } from '../governance/schema.ts'
 import type { SemanticLlm } from '../governance/semantic-scan.ts'
-import { SnapshotStore } from '../governance/snapshots.ts'
-import { goneCopies } from '../tools/workspace-gate.ts'
 import { AutoCheckupScheduler, type AutoCheckupTimer } from '../gui/auto-checkup.ts'
 import { CheckupSuggestions } from '../gui/checkup-suggestions.ts'
 import { createMemoryCommand } from '../gui/commands.ts'
@@ -25,6 +17,7 @@ import {
   GUI_CHECKUP_VIEW_FILE, GUI_VIEW_DIR, GUI_VIEW_FILES, GUI_WORKSPACE_MAP_FILE, MEMORY_COMMAND_NAME,
 } from '../gui/contract.ts'
 import { ViewWriter, collectCheckupView, collectGlobalViews } from '../gui/view-writer.ts'
+import { createContextPlane, type ContextPlane } from './context.ts'
 import { createStandaloneHost } from './host.ts'
 
 export { STANDALONE_SESSION_ID } from './host.ts'
@@ -49,10 +42,17 @@ export interface GuiPlaneOptions {
   lock?: RootLock
 }
 
-/** 无宿主装配的平面：/memory 命令入口、视图文件读取、记忆根内文件的读取与打开、释放。 */
+/** 快照端点给页面的形状：hook 与 memory_recall 带入的是同一段 text。 */
+export type GuiSnapshotResult =
+  | { status: 'ready'; text: string; usedTokens: number; injectedCount: number }
+  | { status: 'bad-project'; project?: string }
+
+/** 无宿主装配的平面：/memory 命令入口、视图文件读取、记忆根内文件的读取与打开、设置、快照、释放。 */
 export interface GuiPlane {
   readonly memoryRoot: string
   readonly project: string
+  /** 上下文平面：存储、设置、类型表、快照、写入管线、检索。serve 进程里 /mcp 的工具共用它。 */
+  readonly context: ContextPlane
   /** 跑一条 `/memory` 命令行，与宿主命令处理器同一个入口。 */
   run(rawInput: string): Promise<{ kind: 'success'; text?: string } | { kind: 'error'; text: string }>
   readView(name: GuiViewName): Promise<{ status: 'ready'; text: string } | { status: 'missing' }>
@@ -60,6 +60,12 @@ export interface GuiPlane {
   readFile(path: string): Promise<string | undefined>
   /** 根外拒绝并返回 false。 */
   openPath(path: string, action: 'open' | 'reveal'): Promise<boolean>
+  /** 设置快照（页面读）：ready 带有效值与版本号；坏文件或不合法时 unavailable，页面按不可用显示。 */
+  readSettings(): Promise<MemorySettingsSnapshot>
+  /** 设置提交（页面写）：带版本号防冲突，内容不合法整批拒绝、什么都不写。 */
+  mutateSettings(ops: readonly SettingsPathOp[], expectedRevision?: number): Promise<MemorySettingsMutateResult>
+  /** 快照原文 + 用量。project 缺省用装配的项目；给定的必须是已存在目录的绝对路径，否则 bad-project。 */
+  snapshot(project?: string): Promise<GuiSnapshotResult>
   dispose(): Promise<void>
 }
 
@@ -117,34 +123,14 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
   const isGovernanceEnabled = () => true
   const llmOf = () => options.llm ?? null
 
-  // 记忆根写锁：这个装配实例一把，注入文件表、侧表、待决账本、视图写入器（同实例内按计数嵌套）
-  const rootLock = options.lock ?? createRootLock({ root: memoryRoot, log })
-  // 侧表（快照、待决账本、扫描缓存、建议忽略、体检记录、自动体检设置）住 <memoryRoot>/.state/。
-  // 探针：独立面够不着宿主 storageDomain，不写「没有旧 KV」的结清标记，宿主下次再探
-  const sidecar = new SidecarStore({
-    root: memoryRoot,
-    lock: rootLock,
-    schemas: { snapshots: memorySnapshotSchema, pending: pendingDecisionSchema, scanCache: scanCacheSchema, adviceIgnores: adviceIgnoreSchema },
-    /** 探针：独立面够不着宿主 storageDomain，不写结清标记，宿主下次再探。 */
-    openLegacyKv: async () => undefined,
-    log,
-    now,
+  // 上下文平面：存储、设置、类型表、快照、写入管线、检索都在它上面；本平面只装界面这一层
+  const context = await createContextPlane({
+    memoryRoot, project, log, now,
+    ...(options.lock === undefined ? {} : { lock: options.lock }),
   })
-  // 类型表取 schema 缺省（通用场景、没有自建类型）；独立装配没有配置热更新，建一次就够
-  const registry = buildTypeRegistry({ template: 'custom', customTypes: {}, scenes: PRESET_SCENES, removedPresetTypes: [] })
-  for (const warning of registry.warnings) log.warn(`[plastic-memory] ${warning}`)
-  // 纯逻辑层不 import 框架包，日志经 MemoryLogger 注入；索引行的陈旧度按类型表的 recall 现算（同宿主接线）
-  const fileTable = new FileTable({
-    root: memoryRoot,
-    lock: rootLock,
-    stats: sidecar.recallStats,
-    formatIndexLine: (r, file) => formatIndexLine(r, { passive: registry.get(r.type).recall === 'passive', file }),
-    log,
-  })
-  const store = new MemoryStore(fileTable, log, sidecar.recallStats)
-  // 五个治理存储：forget 的快照先行、待决账本清理与 GUI 视图都要它们，独立进程里同样全接
-  const decisions = new PendingDecisionsStore(sidecar.pending, rootLock)
-  const snapshots = new SnapshotStore(sidecar.snapshots, { findGone: goneCopies(store) })
+  const { sidecar, store, decisions, snapshots, registry, settings } = context
+  const rootLock = context.lock
+  // 治理侧的其余存储（体检记录、自动体检设置、建议忽略、扫描缓存）从侧表接出
   const scanCache = sidecar.scanCache
   const ignores = new AdviceIgnoreStore(sidecar.adviceIgnores)
   const checkups = new CheckupRecordStore(sidecar.checkups)
@@ -237,6 +223,7 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
   return {
     memoryRoot,
     project,
+    context,
     run: rawInput => command.handler({ rawInput: commandInput(rawInput) }),
     readView: async name => {
       const path = join(memoryRoot, GUI_VIEW_DIR, VIEW_FILES[name])
@@ -257,6 +244,20 @@ export async function createGuiPlane(options: GuiPlaneOptions): Promise<GuiPlane
       const target = await resolveInRoot(path)
       if (target === undefined) return false
       return await open(target, action)
+    },
+    readSettings: () => settings.snapshot(),
+    mutateSettings: async (ops, expectedRevision) => {
+      const result = await settings.mutate(ops, expectedRevision)
+      // 写成了就重建类型表（设置没碰类型配置时 refresh 是空转）：记忆页、命令与快照随后读到的就是新表
+      if (result.ok) await context.refresh()
+      return result
+    },
+    snapshot: async (project) => {
+      if (project !== undefined && project !== 'global' && !isAbsolute(project)) return { status: 'bad-project', project }
+      const resolved = await context.resolveProject(project)
+      if (resolved === undefined && project !== undefined && project !== 'global') return { status: 'bad-project', project }
+      const snap = await context.snapshot(resolved)
+      return { status: 'ready', text: snap.text, usedTokens: snap.usedTokens, injectedCount: snap.injectedIds.length }
     },
     dispose: async () => {
       if (isDisposed) return

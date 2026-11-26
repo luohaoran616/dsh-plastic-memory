@@ -50,6 +50,9 @@ function createFakePlane(): GuiPlanePort {
     )),
     readFile: vi.fn(async (_path: string): Promise<string | undefined> => undefined),
     openPath: vi.fn(async (_path: string, _action: 'open' | 'reveal'): Promise<boolean> => true),
+    readSettings: vi.fn(async () => ({ status: 'ready', revision: 0, value: {}, writable: true }) as const),
+    mutateSettings: vi.fn(async () => ({ ok: true, value: {}, revision: 1 }) as const),
+    snapshot: vi.fn(async () => ({ status: 'ready', text: '', usedTokens: 0, injectedCount: 0 }) as const),
     dispose: vi.fn(async (): Promise<void> => {}),
   }
 }

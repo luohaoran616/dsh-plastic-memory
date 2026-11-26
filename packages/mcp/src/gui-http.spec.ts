@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { handleGuiRequest, type GuiPlanePort } from './gui-http.ts'
+import { handleGuiRequest, type GuiPlanePort, type GuiSnapshotResult, type SettingsMutateResult, type SettingsPathOp, type SettingsSnapshot } from './gui-http.ts'
 
 /**
  * GUI 接口的实证（D4、D6）：起真 node:http 服务、发真 fetch 请求，平面用假实现记录调用。
- * 重点覆盖两道写保护——带外 Origin 与 text/plain 的简单请求都不能穿过，以及读体上限与四个端点。
+ * 重点覆盖两道写保护——带外 Origin 与 text/plain 的简单请求都不能穿过，读体上限、六个端点，
+ * 以及设置（读回快照、提交映射 200/400/409）与快照（项目 400）的映射。
  */
 
 /** 假平面：每个动作只记调用与返回，HTTP 层的用例不碰真存储。 */
@@ -20,6 +21,18 @@ function createFakePlane() {
     )),
     readFile: vi.fn(async (_path: string): Promise<string | undefined> => undefined),
     openPath: vi.fn(async (_path: string, _action: 'open' | 'reveal'): Promise<boolean> => true),
+    readSettings: vi.fn(async (): Promise<SettingsSnapshot> => (
+      { status: 'ready', revision: 3, value: { template: 'coding' }, writable: true }
+    )),
+    mutateSettings: vi.fn(async (
+      _ops: readonly SettingsPathOp[],
+      _expectedRevision?: number,
+    ): Promise<SettingsMutateResult> => (
+      { ok: true, value: { template: 'office' }, revision: 4 }
+    )),
+    snapshot: vi.fn(async (_project?: string): Promise<GuiSnapshotResult> => (
+      { status: 'ready', text: '# 长期记忆', usedTokens: 12, injectedCount: 2 }
+    )),
     dispose: vi.fn(async (): Promise<void> => {}),
   } satisfies GuiPlanePort
 }
@@ -255,6 +268,81 @@ describe('GUI 的 HTTP 接口（D4、D6）', () => {
     expect(revealed.status).toBe(200)
     expect(JSON.parse(revealed.text)).toEqual({ ok: true })
     expect(plane.openPath).toHaveBeenCalledWith('/memories/a.md', 'reveal')
+  })
+
+  it('设置：GET 读回快照原样；POST 提交成功映射 200 ready', async () => {
+    const plane = createFakePlane()
+    const gui = await startGui(plane)
+
+    const got = await send(gui, '/api/gui/settings')
+    expect(got.status).toBe(200)
+    expect(JSON.parse(got.text)).toEqual({ status: 'ready', revision: 3, value: { template: 'coding' }, writable: true })
+
+    const done = await postJson(gui, '/api/gui/settings', { ops: [{ op: 'set', path: ['template'], value: 'office' }], expectedRevision: 3 })
+    expect(done.status).toBe(200)
+    expect(JSON.parse(done.text)).toEqual({ status: 'ready', revision: 4, value: { template: 'office' }, writable: true })
+    expect(plane.mutateSettings).toHaveBeenCalledWith([{ op: 'set', path: ['template'], value: 'office' }], 3)
+
+    // 不带 expectedRevision 也行
+    await postJson(gui, '/api/gui/settings', { ops: [] })
+    expect(plane.mutateSettings).toHaveBeenLastCalledWith([], undefined)
+  })
+
+  it('设置：提交的 400/409/415/403 各有对应码，unavailable 也是 409', async () => {
+    const plane = createFakePlane()
+    const gui = await startGui(plane)
+
+    // 请求体形状不对：平面不被调用
+    const badOps = await postJson(gui, '/api/gui/settings', { ops: 'template' })
+    expect(badOps.status).toBe(400)
+    expect(errorCode(badOps.text)).toBe('settings/bad-request')
+    const badPath = await postJson(gui, '/api/gui/settings', { ops: [{ op: 'set', path: [], value: 1 }] })
+    expect(badPath.status).toBe(400)
+    expect(errorCode(badPath.text)).toBe('settings/bad-request')
+    const badRevision = await postJson(gui, '/api/gui/settings', { ops: [], expectedRevision: -1 })
+    expect(badRevision.status).toBe(400)
+    const wrongType = await send(gui, '/api/gui/settings', {
+      method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}',
+    })
+    expect(wrongType.status).toBe(415)
+    const foreign = await postJson(gui, '/api/gui/settings', { ops: [] }, { origin: 'https://evil.example' })
+    expect(foreign.status).toBe(403)
+    expect(plane.mutateSettings).not.toHaveBeenCalled()
+
+    // 内容不合法 → 400 settings/invalid；版本冲突 → 409 settings/conflict；坏文件 → 409 settings/unavailable
+    plane.mutateSettings.mockResolvedValueOnce({ ok: false, reason: 'invalid', issues: ['snapshotTokenBudget: 必须是正整数'] })
+    const invalid = await postJson(gui, '/api/gui/settings', { ops: [] })
+    expect(invalid.status).toBe(400)
+    expect(errorCode(invalid.text)).toBe('settings/invalid')
+
+    plane.mutateSettings.mockResolvedValueOnce({ ok: false, reason: 'conflict', current: { revision: 7, value: {} } })
+    const conflict = await postJson(gui, '/api/gui/settings', { ops: [] })
+    expect(conflict.status).toBe(409)
+    expect(errorCode(conflict.text)).toBe('settings/conflict')
+    expect(conflict.headers.get('x-plastic-settings-revision')).toBe('7')
+
+    plane.mutateSettings.mockResolvedValueOnce({ ok: false, reason: 'unavailable', detail: '设置文件读不出来' })
+    const unavailable = await postJson(gui, '/api/gui/settings', { ops: [] })
+    expect(unavailable.status).toBe(409)
+    expect(errorCode(unavailable.text)).toBe('settings/unavailable')
+  })
+
+  it('快照：ready 回 text 与用量；不存在的项目路径回 400', async () => {
+    const plane = createFakePlane()
+    const gui = await startGui(plane)
+
+    const ok = await send(gui, '/api/gui/snapshot')
+    expect(ok.status).toBe(200)
+    expect(JSON.parse(ok.text)).toEqual({ text: '# 长期记忆', usedTokens: 12, injectedCount: 2 })
+    expect(plane.snapshot).toHaveBeenLastCalledWith(undefined)
+
+    await send(gui, `/api/gui/snapshot?project=${encodeURIComponent('/tmp/proj')}`)
+    expect(plane.snapshot).toHaveBeenLastCalledWith('/tmp/proj')
+
+    plane.snapshot.mockResolvedValueOnce({ status: 'bad-project', project: '/no/such' })
+    const bad = await send(gui, `/api/gui/snapshot?project=${encodeURIComponent('/no/such')}`)
+    expect(bad.status).toBe(400)
+    expect(errorCode(bad.text)).toBe('snapshot/bad-project')
   })
 
   it('不归它管的路径返回 false，响应没被写', async () => {
