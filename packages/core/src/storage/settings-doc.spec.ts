@@ -10,13 +10,13 @@ const doc = (revision: number, set: Record<string, unknown> = {}): SettingsDoc =
 describe('设置文档表', () => {
   let dir: string
   let path: string
-  let log: { warn: ReturnType<typeof vi.fn> }
+  let log: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> }
   let table: DocFileTable<SettingsDoc>
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'pm-settings-'))
     path = join(dir, SETTINGS_FILE)
-    log = { warn: vi.fn() }
+    log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     table = new DocFileTable(path, settingsDocSchema, { locked: fn => fn(), log })
   })
   afterEach(async () => {
