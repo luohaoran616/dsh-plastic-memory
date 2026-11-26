@@ -31,7 +31,7 @@ export const CORE_MODULES = [
   'contract-codes.ts', 'edits.ts', 'retention.ts', 'secrets.ts',
   'storage/agents-md.ts', 'storage/exclusive-link.ts', 'storage/file-table.ts', 'storage/frontmatter.ts',
   'storage/legacy-kv-import.ts', 'storage/parse-cache.ts', 'storage/paths.ts', 'storage/root-lock.ts',
-  'storage/schema.ts', 'storage/sidecar.ts', 'storage/state-files.ts', 'storage/table.ts',
+  'storage/schema.ts', 'storage/settings-doc.ts', 'storage/sidecar.ts', 'storage/state-files.ts', 'storage/table.ts',
   'search/coverage.ts', 'search/jieba-segmenter.ts', 'search/ranking.ts', 'search/tokenizer.ts', 'search/window.ts',
   'gui/contract.ts',
 ] as const

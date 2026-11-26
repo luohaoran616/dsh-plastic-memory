@@ -62,3 +62,17 @@ export const autoCheckupSettingSchema = z.object({
   frequency: autoCheckupFrequencySchema,
 })
 export type AutoCheckupSetting = z.infer<typeof autoCheckupSettingSchema>
+
+/**
+ * 设置文档 `.state/settings.json`（见 storage/settings-doc.ts）：记忆库的显式改动，叠在各端自己的出厂值上。
+ * 与 DSH 宿主的配置模型同构——set 是显式写下的值（嵌套对象，按键合并），unset 是从出厂值里删掉的路径（字典里的键）。
+ * revision 是版本号，每次写入加一；提交时带读到的版本号，别处先改过就冲突。
+ * 这里只管文件形状：有哪些字段、取值范围由插件的设置语义管（governance/memory-settings.ts），存储层不认识它们。
+ */
+export const settingsDocSchema = z.object({
+  version: z.literal(1),
+  revision: z.number().int().nonnegative(),
+  set: z.record(z.string(), z.unknown()),
+  unset: z.array(z.array(z.string())),
+})
+export type SettingsDoc = z.infer<typeof settingsDocSchema>

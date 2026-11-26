@@ -4,10 +4,11 @@ import { dirname, join } from 'node:path'
 import type { ZodType } from 'zod'
 import type { BatchKvTable, CasKvTable, ClaimKvTable, KvTable, RefreshableClaim, RefreshableClaimKvTable } from '../kv-table.ts'
 import type { MemoryLogger } from './table.ts'
-import { autoCheckupSettingSchema, checkupRecordSchema, recallStatsSchema, type AutoCheckupSetting, type CheckupRecord, type RecallStats } from './schema.ts'
+import { autoCheckupSettingSchema, checkupRecordSchema, recallStatsSchema, settingsDocSchema, type AutoCheckupSetting, type CheckupRecord, type RecallStats, type SettingsDoc } from './schema.ts'
 import { STATE_DIR } from './paths.ts'
 import { SAFE_KEY_RE, atomicWrite, breakStaleLock, createExclusive, describeError, errnoCode, isStaleLock, lockOwner } from './state-files.ts'
 import { LegacyKvImport, type LegacyKvTables } from './legacy-kv-import.ts'
+import { DocFileTable, SETTINGS_FILE } from './settings-doc.ts'
 import type { RootLock } from '../root-lock.ts'
 import { defaultRootLock } from './root-lock.ts'
 
@@ -25,6 +26,7 @@ import { defaultRootLock } from './root-lock.ts'
  *   .state/checkups/<sha1(范围键)>.claim      这个范围体检期间的认领（排他创建，持有者定时刷新，体检完即删）
  *   .state/auto-checkups/<sha1(范围键)>.json  自动体检设置表，每个范围一文件
  *   .state/recall-stats.json        整张表一个文件 { [id]: RecallStats }
+ *   .state/settings.json            记忆库的显式设置改动，整份文件一份文档（见 settings-doc.ts；首次保存时才建）
  *
  * 写都是 tmp + rename 原子写，进程内经一条 Promise 链串行，轮到了再拿记忆根写锁（排队期间不占写锁）；读不加锁。
  * 旧 KV 导入另用锁文件跨进程串行，裁决用条目旁的认领文件跨进程互斥（同一条待决项同时只许一次裁决），
@@ -33,7 +35,7 @@ import { defaultRootLock } from './root-lock.ts'
  * 体检记录表、自动体检设置表的 schema 是存储层自己的（storage/schema.ts），不经注入。
  *
  * 导入屏障：snapshots / pending / scan-cache 的每个读写方法先 await 一次旧 KV 导入（legacy-kv-import.ts）。
- * 召回统计不过屏障——导入不碰它，而 FileTable 加载时就要逐条读它，过屏障会把导入拖进 apply。建议忽略表、体检记录表、自动体检设置表是旧 KV 之后才有的，
+ * 召回统计不过屏障——导入不碰它，而 FileTable 加载时就要逐条读它，过屏障会把导入拖进 apply。建议忽略表、体检记录表、自动体检设置表、设置文档是旧 KV 之后才有的，
  * 导入同样不碰它们，也不过屏障。
  * 0.3.0 删除导入：删掉 legacy-kv-import.ts，这里的 openLegacyKv、legacy 与屏障一并去掉。
  */
@@ -377,6 +379,7 @@ export class SidecarStore<S extends { id: string }, P extends { id: string }, C 
   readonly adviceIgnores: CasKvTable<I>
   readonly checkups: CasKvTable<CheckupRecord> & RefreshableClaimKvTable<CheckupRecord>
   readonly autoCheckups: KvTable<AutoCheckupSetting>
+  readonly settings: DocFileTable<SettingsDoc>
 
   private readonly stateDir: string
   private readonly opts: SidecarOptions<S, P, C, I>
@@ -410,6 +413,7 @@ export class SidecarStore<S extends { id: string }, P extends { id: string }, C 
     this.adviceIgnores = new EntryFileTable(join(this.stateDir, ADVICE_IGNORES_DIR), sha1, opts.schemas.adviceIgnores, ungated)
     this.checkups = new EntryFileTable(join(this.stateDir, CHECKUPS_DIR), sha1, checkupRecordSchema, ungated)
     this.autoCheckups = new EntryFileTable(join(this.stateDir, AUTO_CHECKUPS_DIR), sha1, autoCheckupSettingSchema, ungated)
+    this.settings = new DocFileTable(join(this.stateDir, SETTINGS_FILE), settingsDocSchema, ungated)
   }
 
   /** 旧 KV 导入是否已结清（导完且旧行已删）；彻底删除据此拦（续传会把旧快照里的明文放回来）。 */
