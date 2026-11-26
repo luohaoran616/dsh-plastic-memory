@@ -1,0 +1,208 @@
+/**
+ * 上下文平面：独立端（MCP server、hook、页面后端）共用的无宿主装配——存储 + 设置 + 类型表 + 快照 + 写入管线 + 检索。
+ * 与 GUI 平面（plane.ts）的差别：这里没有视图、命令与调度，只有「把记忆带进模型上下文」和「把模型的写入落库」两件事。
+ * serve 进程里 MCP 工具与 GUI 平面建在同一个上下文平面上：一张文件表、一份设置、一张类型表（顺带收掉
+ * 上一轮记的「serve 进程里两个 FileTable 不互斥」）。
+ */
+
+import { realpath } from 'node:fs/promises'
+import { isAbsolute, join } from 'node:path'
+import type { z } from 'zod'
+import { createMemorySearch, type SearchInput, type SearchResult } from '../factory.ts'
+import type { RootLock, SectionLock } from '../root-lock.ts'
+import { DocFileTable, SETTINGS_FILE, settingsDocSchema, type SettingsDoc } from '../storage/settings-doc.ts'
+import { STATE_DIR } from '../storage/paths.ts'
+import { FileTable } from '../storage/file-table.ts'
+import { createRootLock } from '../storage/root-lock.ts'
+import { SidecarStore } from '../storage/sidecar.ts'
+import type { MemoryLogger } from '../storage/table.ts'
+import { MemoryStore } from '../store.ts'
+import { PendingDecisionsStore } from '../governance/decisions.ts'
+import { adviceIgnoreSchema, memorySnapshotSchema, pendingDecisionSchema, scanCacheSchema } from '../governance/schema.ts'
+import { MemorySettings, createSettingsRegistry } from '../governance/memory-settings.ts'
+import { SnapshotStore } from '../governance/snapshots.ts'
+import { runSavePipeline, type PipelineResult, type SaveInput } from '../pipeline.ts'
+import { prereadSnapshot } from '../runtime.ts'
+import { assembleSnapshot, type SnapshotUsage } from '../snapshot.ts'
+import type { TypeRegistry } from '../type-registry.ts'
+import { createAnchorLocator, type AnchorLocator, type AnchorLocatorOptions, type SourceAnchor } from '../tools/anchor.ts'
+import { executeSource, renderSourceResult, type SourceResult } from '../tools/source.ts'
+import { goneCopies } from '../tools/workspace-gate.ts'
+
+/** 上下文平面的参数：记忆根必给；项目、客户端标识、日志、时钟、写锁可选（锁缺省自建一把，同进程多平面注入同一把）。 */
+export interface ContextPlaneOptions {
+  memoryRoot: string
+  /** 客户端标识（PLASTIC_CLIENT）：写入路径拿它标记记录来源（`mcp:<client>`）。 */
+  client?: string
+  /** 各端配置里写死的那个项目（PLASTIC_PROJECT）：resolveProject 缺省时用它。不带时快照只带全局、save 无项目落点。 */
+  project?: string
+  /** 来源锚定位的选项（bin 按环境翻译：开关 + 两端根目录）；缺省不定位，写入维持 mcp:<client>。 */
+  anchors?: AnchorLocatorOptions
+  log?: MemoryLogger
+  now?: () => number
+  /** 记忆根写锁：注入则用注入的那把，缺省自建一把。 */
+  lock?: SectionLock
+}
+
+/** 侧表存储的实例类型（schema 槽位定死，泛型跟着定死）。 */
+type PlaneSidecar = SidecarStore<
+  z.infer<typeof memorySnapshotSchema>,
+  z.infer<typeof pendingDecisionSchema>,
+  z.infer<typeof scanCacheSchema>,
+  z.infer<typeof adviceIgnoreSchema>
+>
+
+/** 上下文平面。settings 是具体类（GUI 平面要它的 snapshot/mutate）；registry 是转发对象，refresh 后引用不用换。 */
+export interface ContextPlane {
+  readonly memoryRoot: string
+  readonly client: string
+  readonly project: string | undefined
+  readonly lock: RootLock
+  readonly sidecar: PlaneSidecar
+  readonly store: MemoryStore
+  readonly snapshots: SnapshotStore
+  readonly decisions: PendingDecisionsStore
+  readonly settings: MemorySettings
+  /** 设置文档表（fork 增量）：上游侧表不再承载 settings，独立面自建一张；测试从它读写原始文档。 */
+  readonly settingsTable: DocFileTable<SettingsDoc>
+  readonly registry: TypeRegistry
+  /** 来源锚定位器（未配置时 undefined）；locateAnchor 的实现都在它里面。 */
+  readonly anchors: AnchorLocator | undefined
+  /** 重读设置文档；场景与类型配置变了就重建类型表、回 true（MCP 工具面据此重注册工具）。 */
+  refresh(): Promise<boolean>
+  /**
+   * project 参数 → 会话项目路径：`'global'` 或不存在的路径回 undefined（快照只带全局、save 无项目落点）；
+   * 缺省用装配时的 project；给定的必须是已存在目录的绝对路径，realpath 之后返回。
+   */
+  resolveProject(project?: string): Promise<string | undefined>
+  /**
+   * 来源锚定位（写入侧，设计说明 §A2）：拿 memory_save 收到的入参去客户端自己的会话存储里找
+   * 「刚刚发出这一次调用」的会话。未启用、没找到、读不了都回 undefined（定位器内部已记日志），不挡写入。
+   */
+  locateAnchor(args: { title: string, text: string }): Promise<SourceAnchor | undefined>
+  /**
+   * 回查记忆的来源锚（memory_source 的实现层）：mcp: 通道标识不可回查，外端锚经适配器开窗，
+   * DSH 锚在本进程读不了（提示去 DSH）。返回结构化结果 + 与 DSH 渲染逐字相同的 text。
+   */
+  source(input: { memoryId: string, window?: number }, workspacePath: string | undefined): Promise<SourceResult & { text: string }>
+  search(input: SearchInput): Promise<SearchResult>
+  /** 快照原文 + 用量。纯读：不冻结、不计召回、不跑目录维护（与 DSH 冻结快照的两点差别）。workspacePath 缺省只带全局。 */
+  snapshot(workspacePath: string | undefined): Promise<{ text: string } & SnapshotUsage>
+  /**
+   * 写入走与 DSH 同一条管线（结构去重、疑似密钥拦截、更新、取代、有效期、快照先行）。
+   * session 是来源锚：定位命中 = 真会话 id + [当轮起点, 保存时刻]；没定位到 = 通道标识 `{ id: 'mcp:<client>' }`。
+   */
+  save(input: SaveInput, workspacePath: string | undefined, session: { id: string, turnStartSeq?: number, lastSeq?: number }): Promise<PipelineResult>
+}
+
+/** 侧表四张的 schema 槽位（与 GUI 平面同一份）。 */
+const SIDE_SCHEMAS = { snapshots: memorySnapshotSchema, pending: pendingDecisionSchema, scanCache: scanCacheSchema, adviceIgnores: adviceIgnoreSchema }
+
+export async function createContextPlane(options: ContextPlaneOptions): Promise<ContextPlane> {
+  const memoryRoot = options.memoryRoot
+  const log = options.log ?? console
+  const now = options.now ?? Date.now
+  // 记忆根写锁：这个平面实例一把，注入文件表与侧表（同实例内按计数嵌套）
+  const rootLock = options.lock ?? createRootLock({ root: memoryRoot, log })
+  // 侧表与设置文档都住 <memoryRoot>/.state/（快照、待决账本、扫描缓存、建议忽略、召回统计、settings.json）
+  const sidecar = new SidecarStore({
+    root: memoryRoot,
+    lock: rootLock,
+    schemas: SIDE_SCHEMAS,
+    /** 探针：独立面够不着宿主 storageDomain，不写结清标记，宿主下次再探。 */
+    openLegacyKv: async () => undefined,
+    log,
+    now,
+  })
+  // 设置语义 + 设置驱动的类型表：文档变了重建背后的表（场景写错按 buildTypeRegistry 的警告运行，不抛）
+  // 设置文档（fork 增量）：上游侧表不再承载它，这里自建一张（`.state/settings.json`）；
+  // 读写走进程内链 + 同一把记忆根写锁（与侧表同一串行化约定）
+  let settingsTail: Promise<unknown> = Promise.resolve()
+  const settingsLocked = async <R>(fn: () => Promise<R>): Promise<R> => {
+    const run = () => rootLock.run(fn)
+    const next = settingsTail.then(run, run)
+    settingsTail = next.catch(() => {})
+    return next
+  }
+  const settingsTable = new DocFileTable(join(memoryRoot, STATE_DIR, SETTINGS_FILE), settingsDocSchema, { locked: settingsLocked, log })
+  const settings = new MemorySettings(settingsTable, log)
+  const backed = await createSettingsRegistry(settings, log)
+  // 索引行的 passive 标注按类型表现算（转发对象，refresh 后同一引用读到的就是新表）
+  const fileTable = new FileTable({ root: memoryRoot, lock: rootLock, stats: sidecar.recallStats, log })
+  const store = new MemoryStore(fileTable, log, sidecar.recallStats)
+  // 管线要的两件治理存储：改写、替代的快照先行与撤销记录，独立端同接
+  const decisions = new PendingDecisionsStore(sidecar.pending, rootLock)
+  const snapshots = new SnapshotStore(sidecar.snapshots, { findGone: goneCopies(store) })
+  const search = createMemorySearch({ store, log })
+  // 来源锚定位器（每平面一把）：未配置 = 整个定位关掉，locateAnchor 恒回 undefined
+  const anchors = options.anchors === undefined ? undefined : createAnchorLocator(options.anchors)
+  const resolveProject = async (project?: string): Promise<string | undefined> => {
+    if (project === 'global') return undefined
+    const requested = project ?? options.project
+    if (requested === undefined || !isAbsolute(requested)) return undefined
+    try {
+      return await realpath(requested)
+    } catch {
+      return undefined
+    }
+  }
+  return {
+    memoryRoot,
+    client: options.client ?? 'unknown',
+    project: options.project,
+    lock: rootLock,
+    sidecar,
+    settingsTable,
+    store,
+    snapshots,
+    decisions,
+    settings,
+    registry: backed.registry,
+    anchors,
+    refresh: () => backed.refresh(),
+    resolveProject,
+    locateAnchor: args => anchors === undefined ? Promise.resolve(undefined) : anchors.locate(args),
+    // memory_source 的独立端实现：无宿主事件流（DSH 锚按 noHostReason 降级），外端锚经锚定位器的 reader 开窗
+    source: async (input, workspacePath) => {
+      const result = await executeSource(input, { workspacePath }, {
+        store,
+        // 独立端没有宿主事件流：dsh 锚按读不到处理，原因经 noHostReason 带给模型
+        host: { readSessionLog: async () => null, sessionTitleOf: async () => undefined },
+        noHostReason: '这条记忆出自 DeepSeek Harness 会话，请在 DSH 里回查',
+        readExternal: scheme => anchors === undefined ? undefined : anchors.reader(scheme),
+      })
+      return { ...result, text: renderSourceResult(result) }
+    },
+    search,
+    snapshot: async workspacePath => {
+      const pre = await prereadSnapshot(store, workspacePath)
+      const value = await settings.current()
+      return assembleSnapshot({
+        records: pre.records,
+        files: pre.files,
+        quarantinedCount: pre.quarantinedCount,
+        registry: backed.registry,
+        workspacePath,
+        budget: value.snapshotTokenBudget,
+        overflow: value.snapshotOverflow,
+        evidenceLookup: value.evidenceLookup,
+        memoryRoot,
+        now: now(),
+      })
+    },
+    // 事件区间：定位命中时 session 带真锚（[当轮起点, 保存时刻]），没定位到按整会话占位（turnStartSeq 缺省 0）；无子会话委派
+    save: (input, workspacePath, session) => runSavePipeline(input, {
+      store,
+      registry: backed.registry,
+      workspacePath,
+      session: {
+        id: session.id,
+        lastSeq: session.lastSeq ?? 0,
+        ...(session.turnStartSeq === undefined ? {} : { turnStartSeq: session.turnStartSeq }),
+      },
+      snapshots,
+      decisions,
+      now,
+    }),
+  }
+}

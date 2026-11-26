@@ -320,6 +320,27 @@ All notable changes to this project are documented here. The format follows
 - When `memory_search` searches past conversations only, it also looks for
   matching memories and moves the turns they were saved from up the results.
 
+- True source anchors for the standalone (MCP) surface: `memory_save` locates
+  the client session that just issued the call by exact-argument correlation
+  in the client's own session store (ZCode's `db.sqlite`, Antigravity's
+  plaintext transcripts; both read-only) and stamps `source` with
+  `zcode:sess_…` / `antigravity:<uuid>` plus that client's own event range.
+  No match → the previous `mcp:<client>` `[0, 0]` channel marker; writes are
+  never blocked. Design: `docs/design/2026-11-26-source-anchor-spec.md`.
+- Seventh MCP tool `memory_source` on the standalone surface: same
+  parameters, caps (24 events × 400 chars) and rendering as the DSH plugin's;
+  dereferences `zcode:`/`antigravity:` anchors via read-only client-store
+  adapters, `mcp:` markers answer `unavailable`, other-project records are
+  `forbidden`.
+- DSH sessions can dereference external anchors too: the plugin's
+  `memory_source` reads ZCode/Antigravity-written anchors through the same
+  adapters (locator built lazily on first external lookup;
+  `PLASTIC_ANCHOR=off` disables locating everywhere, lookups unaffected).
+- `plastic-mcp anchor-doctor`: read-only probe report for both client stores
+  (root presence, table/column shape, ZCode online-session count, Antigravity
+  transcript count); run it after a client upgrade — a red probe means that
+  client's anchors are skipped this release, everything else keeps working.
+
 ### Changed
 - The memories loaded at the start of a chat now follow the topic index.
   After the memories given in full, each topic gets one line with its
@@ -575,6 +596,14 @@ All notable changes to this project are documented here. The format follows
   showed the memory and its delete button again before the restore had
   finished. The card now stays deleted, with Undo shown as busy, until the
   memory is back.
+
+||||||| base
+- The standalone `memory_save` description now renders the MCP-flavoured
+  guide: the settings-backed type registry dropped the surface argument, so
+  MCP clients were shown DSH-only parameter names (`action`, `edits`,
+  `content`, `scope`) that the tool does not take — models concluded that
+  updates were unsupported and re-saved instead. The DSH plugin's own
+  description is unchanged.
 
 ## [0.2.0] - 2026-11-21
 

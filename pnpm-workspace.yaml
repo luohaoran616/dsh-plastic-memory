@@ -1,5 +1,10 @@
 packages:
   - '.'
+  - 'packages/*'
+
+# 根包也是工作区成员，但 pnpm 的 `-r` 缺省跳过工作区根——不开这条，`pnpm -r build/test/typecheck`
+# 只会跑 packages/* 下的包，根插件包的构建与 4904 条用例根本不在其中。
+includeWorkspaceRoot: true
 
 allowBuilds:
   esbuild: true

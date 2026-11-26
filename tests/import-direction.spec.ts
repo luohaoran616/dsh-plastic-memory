@@ -10,7 +10,11 @@ import { zh as clientZh } from '../client/locales.ts'
 // 静态读文件 + 正则扫描，不执行源码。
 
 const SRC_DIR = fileURLToPath(new URL('../src/', import.meta.url))
+// 叶子、存储、记忆层搬进了 packages/core/src（与插件 src 同名同相对位置）；插件侧引用它们是裸包名
+// @plastic/core/<名>.ts，所以这套分层守卫同时扫两处，裸包名解析回同名模块——搬家不让层规则失去覆盖。
+const CORE_SRC_DIR = fileURLToPath(new URL('../packages/core/src/', import.meta.url))
 const CLIENT_DIR = fileURLToPath(new URL('../client/', import.meta.url))
+const CORE_PREFIX = '@plastic/core/'
 
 const LAYER = { leaf: 0, storage: 1, memory: 2, governance: 3, executor: 4, gui: 5, binding: 6, entry: 7 } as const
 type LayerName = keyof typeof LAYER
@@ -27,8 +31,9 @@ const MEMORY_MODULES = new Set([
   'search/window', 'search/dialogue-rank', 'search/memory-quotes', 'search/segments', 'search/dialogue-intake', 'search/memory-candidates', 'search/dialogue-format', 'change', 'commit-change', 'merged-history', 'session-id', 'links',
   'topic-members', 'search/topic-context',
 ])
-// 接线层：index.ts、交给 ctx.storageDomain.open 的域定义、宿主会话适配器（后两个只被 index.ts 用）
-const ENTRY_MODULES = new Set(['index', 'domain-spec', 'cordis-host-session'])
+// 接线层：index.ts、交给 ctx.storageDomain.open 的域定义、宿主会话适配器（后两个只被 index.ts 用），
+// 以及 core 的组装工厂（DSH 插件之外的入口都经它接线）
+const ENTRY_MODULES = new Set(['index', 'domain-spec', 'cordis-host-session', 'factory'])
 
 const FRAMEWORK_PREFIX = '@deepseek-ai/'
 
@@ -42,14 +47,19 @@ const ALLOWED_EXCEPTIONS: ReadonlyArray<{ from: string; to: string; reason: stri
 ]
 
 function layerOf(mod: string): LayerName | undefined {
-  if (LEAF_MODULES.has(mod)) return 'leaf'
-  if (MEMORY_MODULES.has(mod)) return 'memory'
-  if (ENTRY_MODULES.has(mod)) return 'entry'
-  if (/^storage\/[^/]+$/.test(mod)) return 'storage'
-  if (/^governance\/[^/]+$/.test(mod)) return 'governance'
-  if (/^gui\/[^/]+$/.test(mod)) return 'gui'
-  if (/^tools\/[^/]+-tool$/.test(mod)) return 'binding'
-  if (/^tools\/[^/]+$/.test(mod)) return 'executor'
+  // core 的用例与实现同目录（vitest include: src/**/*.spec.ts）：用例与被测模块同层，按去掉 .spec 的名字归层
+  const name = mod.endsWith('.spec') ? mod.slice(0, -'.spec'.length) : mod
+  if (LEAF_MODULES.has(name)) return 'leaf'
+  if (MEMORY_MODULES.has(name)) return 'memory'
+  if (ENTRY_MODULES.has(name)) return 'entry'
+  // 独立装配（src/standalone/*）：与 index.ts 并列的装配入口，同属接线层——可导入 gui/governance/core 等业务层；
+  // 反向导入（业务层 import standalone/*）按「每层只 import 本层及更低层」自动算违规
+  if (/^standalone\/[^/]+$/.test(name)) return 'entry'
+  if (/^storage\/[^/]+$/.test(name)) return 'storage'
+  if (/^governance\/[^/]+$/.test(name)) return 'governance'
+  if (/^gui\/[^/]+$/.test(name)) return 'gui'
+  if (/^tools\/[^/]+-tool$/.test(name)) return 'binding'
+  if (/^tools\/[^/]+$/.test(name)) return 'executor'
   return undefined
 }
 
@@ -97,12 +107,19 @@ function resolveRelative(from: string, spec: string): string | undefined {
   return posix.normalize(posix.join(posix.dirname(from), spec)).replace(/\.ts$/, '')
 }
 
+/** 一条边的去向：裸包名 @plastic/core/<名>.ts 指回包内同名模块，其余照旧按相对路径解析。 */
+function resolveTarget(from: string, spec: string): string | undefined {
+  if (spec.startsWith(CORE_PREFIX)) return spec.slice(CORE_PREFIX.length).replace(/\.ts$/, '')
+  return resolveRelative(from, spec)
+}
+
 function isException(from: string, to: string): boolean {
   return ALLOWED_EXCEPTIONS.some(e => e.from === from && e.to === to)
 }
 
 const modules = listSourceModules().map(f => f.slice(0, -'.ts'.length))
-const edges = modules.flatMap(m => scanImports(m))
+const coreModules = listSourceModules(CORE_SRC_DIR).map(f => f.slice(0, -'.ts'.length))
+const edges = [...modules.flatMap(m => scanImports(m)), ...coreModules.flatMap(m => scanImports(m, `${CORE_SRC_DIR}${m}.ts`))]
 
 // 浏览器半侧 client/*：独立编译，只许 import 本目录、src/gui/contract（视图与命令的契约），以及宿主
 // 浏览器模块表提供的运行时（react、cordis 等，构建时 external）；src/ 任何模块不许 import client/。
@@ -111,15 +128,16 @@ const clientEdges = CLIENT_FILES.flatMap(f => scanImports(`client/${f}`, `${CLIE
 const CLIENT_ALLOWED_SRC = new Set(['src/gui/contract'])
 
 describe('import 方向', () => {
-  it('src 下每个模块都归入某一层', () => {
+  it('src 与 packages/core/src 下每个模块都归入某一层', () => {
     expect(modules.length).toBeGreaterThan(0)
     expect(modules.filter(m => layerOf(m) === undefined)).toEqual([])
+    expect(coreModules.filter(m => layerOf(m) === undefined)).toEqual([])
   })
 
   it('相对 import 都解析到 src 内已知模块', () => {
-    const known = new Set(modules)
+    const known = new Set([...modules, ...coreModules])
     const unresolved = edges
-      .map(e => ({ ...e, to: resolveRelative(e.from, e.spec) }))
+      .map(e => ({ ...e, to: resolveTarget(e.from, e.spec) }))
       .filter(e => e.to !== undefined && !known.has(e.to))
       .map(e => `${e.from} → ${e.spec}`)
     expect(unresolved).toEqual([])
@@ -128,7 +146,7 @@ describe('import 方向', () => {
   it('每层只 import 本层及更低层（登记例外除外）', () => {
     const violations: string[] = []
     for (const e of edges) {
-      const to = resolveRelative(e.from, e.spec)
+      const to = resolveTarget(e.from, e.spec)
       if (to === undefined) continue
       const fromLayer = layerOf(e.from)!
       const toLayer = layerOf(to)
@@ -152,7 +170,7 @@ describe('import 方向', () => {
   })
 
   it('例外表没有失效条目', () => {
-    const present = new Set(edges.map(e => `${e.from} → ${resolveRelative(e.from, e.spec) ?? e.spec}`))
+    const present = new Set(edges.map(e => `${e.from} → ${resolveTarget(e.from, e.spec) ?? e.spec}`))
     const stale = ALLOWED_EXCEPTIONS
       .map(e => `${e.from} → ${e.to}`)
       .filter(key => !present.has(key))
@@ -176,7 +194,7 @@ describe('读会话日志的一层', () => {
 describe('import 方向：GUI 两条边', () => {
   it('执行器不 import GUI 层；GUI 层不 import 绑定层', () => {
     const violations = edges
-      .map(e => ({ from: e.from, to: resolveRelative(e.from, e.spec) }))
+      .map(e => ({ from: e.from, to: resolveTarget(e.from, e.spec) }))
       .filter((e): e is { from: string; to: string } => e.to !== undefined)
       .filter(e => (layerOf(e.from) === 'executor' && layerOf(e.to) === 'gui')
         || (layerOf(e.from) === 'gui' && layerOf(e.to) === 'binding'))
@@ -186,7 +204,7 @@ describe('import 方向：GUI 两条边', () => {
 
   it('src/ 不 import client/', () => {
     const violations = edges
-      .filter(e => resolveRelative(e.from, e.spec)?.startsWith('../client/') === true)
+      .filter(e => resolveTarget(e.from, e.spec)?.startsWith('../client/') === true)
       .map(e => `${e.from} → ${e.spec}`)
     expect(violations).toEqual([])
   })
@@ -206,14 +224,14 @@ describe('import 方向：GUI 两条边', () => {
 describe('治理层只经 KvTable 接口用侧表', () => {
   it('governance/* 不 import 存储实现（sidecar、file-table）；对 storage/* 的引用全是 type-only，换存储后端只换实现', () => {
     const violations = edges
-      .map(e => ({ ...e, to: resolveRelative(e.from, e.spec) }))
+      .map(e => ({ ...e, to: resolveTarget(e.from, e.spec) }))
       .filter(e => layerOf(e.from) === 'governance' && e.to !== undefined && e.to.startsWith('storage/'))
       .filter(e => e.to === 'storage/sidecar' || e.to === 'storage/file-table' || !e.isTypeOnly)
       .map(e => `${e.from} → ${e.to}${e.isTypeOnly ? '（type）' : ''}`)
     expect(violations).toEqual([])
     // 忽略表就是这样接进来的：只认 kv-table 的接口
-    expect(edges.filter(e => e.from === 'governance/advice-ignores').map(e => resolveRelative(e.from, e.spec) ?? e.spec)
-      .filter(to => to.startsWith('storage/') || to === 'kv-table')).toEqual(['kv-table'])
+    expect(edges.filter(e => e.from === 'governance/advice-ignores').map(e => resolveTarget(e.from, e.spec) ?? e.spec)
+      .filter(to => to.startsWith('storage/') || to === 'kv-table')).toEqual(['kv-table', 'kv-table'])
   })
 })
 

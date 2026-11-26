@@ -42,6 +42,8 @@ import { UNKNOWN_SESSION_ID } from './tools/host-session.ts'
 import { createCordisHostSession } from './cordis-host-session.ts'
 import { goneCopies } from './tools/workspace-gate.ts'
 import type { ReadEventFn } from './tools/source.ts'
+import { createAnchorLocator } from './tools/anchor.ts'
+import { anchorOptionsFromEnv } from './standalone/anchor-env.ts'
 import { SnapshotCache, resolveWorkspacePath } from './runtime.ts'
 import { changeNoticeMessageBody, lastVisibleSnapshot, shouldSendSnapshot, snapshotMessageBody } from './snapshot-message.ts'
 import { OVERFLOW_MODES, type OverflowMode } from './contract-codes.ts'
@@ -244,7 +246,7 @@ export async function apply(ctx: Context, config: Config) {
     get: name => currentRegistry.get(name),
     has: name => currentRegistry.has(name),
     all: () => currentRegistry.all(),
-    renderSaveDescription: () => currentRegistry.renderSaveDescription(),
+    renderSaveDescription: surface => currentRegistry.renderSaveDescription(surface),
   }
 
   const memoryRoot = resolveMemoryRoot(config.memoryRoot)
@@ -489,8 +491,17 @@ export async function apply(ctx: Context, config: Config) {
   }
   const findingSources = { readEvent: getReadEvent, noReview }
   const incremental = { checkupCache, tokenCap: () => config.governance.scan.tokenCap.get(), sources: findingSources }
+  // 外端锚（zcode:/antigravity: 前缀）的回读：适配器只读各客户端自己的会话存储（§A5，独立端写入的记忆在 DSH 里也查得到出处）；
+  // PLASTIC_ANCHOR=off 整个关掉。定位是写入侧的事，这里只用 reader 这一半。
+  // 定位器（含对两端根目录的探测）到第一次回读外端锚时才建：装载期零磁盘 I/O（apply.spec 的 fs 追踪守这条）。
+  let anchors: ReturnType<typeof createAnchorLocator> | undefined
   ctx.tools.register(createSourceTool({ store, host, noReview, workspaceOf: cwd => resolveWorkspacePath(ctx, cwd),
-    dialogueStore: dialogueCatchup.readStore, isDialogueEnabled, dialogueToolResults: () => config.search.dialogueToolResults.get() }))
+    dialogueStore: dialogueCatchup.readStore, isDialogueEnabled, dialogueToolResults: () => config.search.dialogueToolResults.get(),
+    readExternal: scheme => {
+      anchors ??= createAnchorLocator(anchorOptionsFromEnv(process.env, line => ctx.logger.info(line)))
+      return anchors.reader(scheme)
+    },
+  }))
   // 体检、健康分、裁决、提升四个工具随体检开关注册 / 注销（开关热更新时再同步一次）。
   // 灵敏度与提升目标不必重注册：工具执行时经 getter 现读配置。
   let governanceTools: Array<() => void> = []

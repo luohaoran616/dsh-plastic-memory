@@ -1,5 +1,6 @@
 import type { MemoryRecord } from '../record-schema.ts'
 import { GLOBAL_SCOPE_KEY, scopeKey, scopeOfMemory } from '../scope.ts'
+import { schemeOf } from '../tools/anchor.ts'
 import { conversationOf, type SourceExcerpt } from '../tools/finding-sources.ts'
 import { sourceWindow, type ReadEventFn } from '../tools/source.ts'
 
@@ -18,6 +19,8 @@ async function readOne(r: MemoryRecord, allowed: ReadonlySet<string>, readEvent:
   if (own === undefined || !allowed.has(scopeKey(own))) return undefined
   // 手编的没有锚
   if (r.source === undefined) return undefined
+  // 外端锚（zcode:/antigravity:）与通道标识（mcp:）不在宿主事件流里：跳过，不调宿主（跨端出处走 memory_source）
+  if (schemeOf(r.source.sessionId) !== 'dsh') return undefined
   try {
     const win = await readEvent(sourceWindow({ ...r, source: r.source }))
     const lines = conversationOf(win.events ?? [])

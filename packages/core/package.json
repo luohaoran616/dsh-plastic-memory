@@ -1,0 +1,12 @@
+{
+  "name": "@plastic/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "转发包：@plastic/core/<路径> 指向仓库根 src/<路径> 下的同一份源码（src 是指向 ../../src 的软链）。核心模块（存储、检索等不依赖宿主运行时的部分）与上游保持同一目录布局，这里只提供包名，方便 MCP 服务、独立页面与客户端代码按包名引用",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    "./*": "./src/*"
+  }
+}

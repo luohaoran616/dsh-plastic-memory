@@ -29,7 +29,7 @@ import { pendingDecisionSchema, type MemorySnapshot, type PendingDecision, type 
 import { buildTypeRegistry } from '../src/type-registry.ts'
 import type { GovernanceRejectCode, RejectCode } from '../src/contract-codes.ts'
 import type { RecallStats } from '../src/storage/schema.ts'
-import type { MemoryLogger } from "../src/storage/table.ts"
+import type { MemoryLogger } from '../src/storage/table.ts'
 import type { MemoryRecord } from '../src/record-schema.ts'
 import { record } from './helpers/record.ts'
 import { fakeExec } from './helpers/exec.ts'

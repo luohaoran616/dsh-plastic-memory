@@ -13,6 +13,7 @@ import type { HostSession } from './host-session.ts'
 import { DialogueStoreUnavailable, type DialogueRecordStore } from '../storage/dialogue-records.ts'
 import { parseMessageRef, renderDialogueLine, wrapDialogueQuote, MESSAGE_REF_MARK } from '../search/dialogue-format.ts'
 import { anchorReadPolicy, sessionFacts, sessionTable, sessionReadPolicy } from './session-access.ts'
+import { schemeOf, type AnchorAdapter, type AnchorWindow } from './anchor.ts'
 
 export type { RawEvent }
 
@@ -36,6 +37,13 @@ export interface SourceToolDeps {
   dialogueStore?: Pick<DialogueRecordStore, 'state' | 'segmentsOf' | 'turnsOf' | 'queued'>
   isDialogueEnabled?: () => boolean
   dialogueToolResults?: () => boolean
+  /**
+   * 外端锚（`zcode:` / `antigravity:` 前缀）的开窗读：按 scheme 取适配器；缺省没有（未接线或本机没配该端）。
+   * 只用 readWindow 这一半——定位是写入侧的事，回查按记录里的锚走。
+   */
+  readExternal?: (scheme: 'zcode' | 'antigravity') => Pick<AnchorAdapter, 'readWindow'> | undefined
+  /** dsh 前缀的锚在本进程读不了时的原因（独立端没有宿主事件流，提示去 DSH 回查）；缺省按会话读不到。 */
+  noHostReason?: string
 }
 
 /** 按记忆锚或消息引用定位；二选一由执行器校验。 */
@@ -89,9 +97,9 @@ type SourceFailure = Exclude<SourceResult, { kind: 'ok' }>
 export const MESSAGE_REF_TEXT_CAP = 8000
 
 /** 单页限制上下文体积，与已有窗口上限一致。 */
-const WINDOW_CAP = 24
+export const WINDOW_CAP = 24
 /** 单条原文最多展示四百字符。 */
-const TEXT_CAP = 400
+export const TEXT_CAP = 400
 /** 搜索一次给八处，留出每处节选的空间。 */
 const FIND_HIT_CAP = 8
 
@@ -200,6 +208,30 @@ function eventText(event: RawEvent, include: SourceArgs['include']) {
 export async function readSource(target: Extract<SourceTarget, { via: 'anchor' }>, args: SourceArgs & { memoryId: string }, deps: SourceToolDeps): Promise<SourceResult> {
   const { record } = target
   const unavailable = (reason: string): SourceFailure => ({ kind: 'unavailable', memoryId: args.memoryId, reason })
+  // 锚的 scheme 前缀分发（设计说明 2026-11-26-source-anchor §A4）：无前缀（DSH 原生）走宿主原路，
+  // 外端前缀走适配器开窗（上限与方向在适配器里与 sourceWindow 对齐），mcp: 通道标识没有可回查的对话
+  const scheme = schemeOf(target.sessionId)
+  if (scheme === 'mcp') return unavailable('经 MCP 写入时没有定位到原始对话，source 只是通道标识')
+  if (scheme === 'zcode' || scheme === 'antigravity') {
+    const adapter = deps.readExternal?.(scheme)
+    if (adapter === undefined) return unavailable('本机没有配置该客户端的锚适配器，读不了外端锚')
+    let win: AnchorWindow
+    try {
+      win = await adapter.readWindow({ sessionId: target.sessionId, eventRange: target.range }, args.window)
+    } catch (e) {
+      return unavailable(`原始会话不可读（${e instanceof Error ? e.message : String(e)}）`)
+    }
+    return {
+      kind: 'ok', via: 'anchor', memoryId: args.memoryId, name: maskSecretSurface(record).name, sessionId: target.sessionId,
+      session: {},
+      anchors: target.anchors.map(({ anchor, fromVersion }, i) => ({
+        index: i + 1, at: anchor.at ?? record.updatedAt, change: anchor.change, by: anchor.by,
+        sessionId: anchor.sessionId, isFromHistory: fromVersion !== undefined, isSelected: i === target.anchorIndex,
+      })),
+      range: win.range, counts: { total: win.events.length + win.skipped, given: win.events.length, skipped: win.skipped },
+      lines: win.events.map(ev => `- [${ev.seq}] ${ev.role}: ${ev.text}`), notes: [], cursors: {},
+    }
+  }
   const unknownReason = '这个会话分不清哪些内容是它自己的，只能围绕出处读'
   const cache = new Map<string, Promise<Awaited<ReturnType<typeof load>>>>()
   async function load(id: string) {
@@ -238,7 +270,7 @@ export async function readSource(target: Extract<SourceTarget, { via: 'anchor' }
     } else sessionId = delegation.sessionId
   }
   const loaded = await get(sessionId)
-  if (!loaded) return unavailable('原始会话读不到（可能已删除）')
+  if (!loaded) return unavailable(deps.noHostReason ?? '原始会话读不到（可能已删除）')
   if (loaded.unknown && (mode !== 'window' || args.hop)) return unavailable(unknownReason)
   const { events } = loaded
   const readable = events.filter(e => e.text !== null)

@@ -125,6 +125,8 @@ export const memoryRecordSchema = z.object({
   /** 决定记录依赖的前提：被依据记忆的 id 和当时的内容摘要。 */
   premises: z.array(z.object({ id: z.string(), digest: z.string() }).catchall(openValue)).optional(),
   /** 单条注入档位；开放取值，读取用 recallOverride，不认识的跟随类型。 */
+  /** ZCode 导入溯源（fork 增量）：`imported-from: zcode:<originSessionId>`，导入幂等按它判重。 */
+  'imported-from': z.string().optional(),
   recall: openValue.optional(),
   /** 锁：缺省或 false 算没锁，其余任何取值都算锁定（以后加档位时，旧读取方按最严处理）。读取用 isLocked。 */
   locked: openValue.optional(),

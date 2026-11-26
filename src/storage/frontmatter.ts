@@ -32,6 +32,7 @@ const HAND_WRITTEN_CONFIDENCE = 0.9
 const FILE_KEY_ORDER = [
   'id', 'name', 'type', 'tags', 'status', 'confidence', 'source',
   'createdAt', 'updatedAt', 'lastConfirmedAt', 'deletedAt', 'validFrom', 'validTo',
+  'imported-from',
   'supersedes', 'summary', 'globalCandidate', 'delegation', 'digest',
   'sourceTrail', 'stateSince', 'factTime', 'related', 'premises', 'recall', 'locked', 'lockedUntil', 'lastChange', 'lastWriteOp', 'mergedInto',
 ] as const

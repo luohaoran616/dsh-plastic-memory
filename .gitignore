@@ -6,3 +6,5 @@ test-results/
 .DS_Store
 
 output/conflict-eval/
+packages/webui/dist/
+integrations/zcode/dist/

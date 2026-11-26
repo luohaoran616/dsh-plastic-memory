@@ -1,12 +1,24 @@
 // 插件页卡片图标：宿主读 package.json 顶层 icon（相对包根，SVG/PNG/JPEG/WebP，不超过 256 KiB），
 // 文件必须随包发布，两份发布清单（package.json files 与 publish-shape 改写）都要带上。
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { icon?: string; files: string[] }
+
+/** 跑一遍 publish-shape.cjs，读回改写后的清单；临时目录用完即删（否则每跑一次漏一个 pm-shape-*）。 */
+function shapedManifest<T>(): T {
+  const dir = mkdtempSync(join(tmpdir(), 'pm-shape-'))
+  try {
+    const out = join(dir, 'package.json')
+    execFileSync(process.execPath, ['scripts/publish-shape.cjs', 'package.json', out])
+    return JSON.parse(readFileSync(out, 'utf8')) as T
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 
 describe('插件图标', () => {
   it('package.json 声明 icon，文件是不超过 256 KiB 的 SVG', () => {
@@ -18,9 +30,7 @@ describe('插件图标', () => {
 
   it('图标在两份发布清单里', () => {
     expect(pkg.files).toContain('assets/icon.svg')
-    const out = join(mkdtempSync(join(tmpdir(), 'pm-shape-')), 'package.json')
-    execFileSync(process.execPath, ['scripts/publish-shape.cjs', 'package.json', out])
-    const shaped = JSON.parse(readFileSync(out, 'utf8')) as { icon?: string; files: string[] }
+    const shaped = shapedManifest<{ icon?: string; files: string[] }>()
     expect(shaped.files).toContain('assets/icon.svg')
     expect(shaped.icon).toBe('./assets/icon.svg')
   })
@@ -45,9 +55,7 @@ describe('插件页详情文档', () => {
   it('文档里的本地图片都在两份发布清单里', () => {
     const images = docs.flatMap(({ detail }) =>
       [...readFileSync(detail!, 'utf8').matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map(m => m[1]!).filter(src => !/^[a-z]+:/i.test(src)))
-    const out = join(mkdtempSync(join(tmpdir(), 'pm-shape-')), 'package.json')
-    execFileSync(process.execPath, ['scripts/publish-shape.cjs', 'package.json', out])
-    const shaped = JSON.parse(readFileSync(out, 'utf8')) as { files: string[] }
+    const shaped = shapedManifest<{ files: string[] }>()
     for (const src of images) {
       const path = join('locale', src).replace(/\\/g, '/')
       expect(pkg.files.some(f => path === f || path.startsWith(`${f}/`)), path).toBe(true)

@@ -1,0 +1,164 @@
+{
+  "mode": "dry-run",
+  "source": "/home/luo/.zcode/cli/memories",
+  "root": "/tmp/pm-dryrun-root-HeWM",
+  "mapFile": "/tmp/zcode-map.json",
+  "typeMap": {
+    "project": "project",
+    "reference": "reference",
+    "knowledge": "knowledge",
+    "user": "preference",
+    "feedback": "preference"
+  },
+  "summary": {
+    "projects": 6,
+    "scanned": 9,
+    "wouldImport": 9,
+    "imported": 0,
+    "skipped": 0,
+    "skippedByReason": {
+      "exists": 0,
+      "duplicate-in-source": 0,
+      "parse-error": 0,
+      "unmapped": 0
+    }
+  },
+  "unknownTypes": [],
+  "warnings": [],
+  "projects": [
+    {
+      "hash": "alpha-4371d60a124eec63",
+      "files": 9,
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "note": "已映射"
+    },
+    {
+      "hash": "tmp-e9671acd244849c5",
+      "files": 0,
+      "scope": "global",
+      "workspacePath": null,
+      "note": "未映射，按 global 处理"
+    },
+    {
+      "hash": "zc-bench-da1f671849c7d060",
+      "files": 0,
+      "scope": "global",
+      "workspacePath": null,
+      "note": "未映射，按 global 处理"
+    },
+    {
+      "hash": "zc-night-1fc730f28cec4ced",
+      "files": 0,
+      "scope": "global",
+      "workspacePath": null,
+      "note": "未映射，按 global 处理"
+    },
+    {
+      "hash": "zcap-9c03ab61b6c8de86",
+      "files": 0,
+      "scope": "global",
+      "workspacePath": null,
+      "note": "未映射，按 global 处理"
+    },
+    {
+      "hash": "zcap2-3d50c0e8925570a3",
+      "files": 0,
+      "scope": "global",
+      "workspacePath": null,
+      "note": "未映射，按 global 处理"
+    }
+  ],
+  "entries": [
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/comfyui-short-drama.md",
+      "title": "comfyui-short-drama",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_c965da94-284b-445d-8288-bf92d313e065",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/engram-project.md",
+      "title": "engram-project",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_6fa6b171-08f9-4a80-b417-6da852e699b4",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/humanlike-writing-assistant-project.md",
+      "title": "humanlike-writing-assistant-project",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_fe0bc04b-4b20-4f96-bafd-db8ae8d57fcc",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/lan-workstation-setup.md",
+      "title": "lan-workstation-setup",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_1d9e9610-95d2-4928-a7d8-5966fbbd1b1f",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/laptop-audio-aec-setup.md",
+      "title": "laptop-audio-aec-setup",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_e19baa32-e6d5-42a1-b7e3-02b216c3f039",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/mcp-lazy-discovery-research.md",
+      "title": "mcp-lazy-discovery-research",
+      "zcodeType": "reference",
+      "type": "reference",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_7c961578-af95-4338-8a97-d77d1835c825",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/memory-systems-division.md",
+      "title": "memory-systems-division",
+      "zcodeType": "feedback",
+      "type": "preference",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_6fa6b171-08f9-4a80-b417-6da852e699b4",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/user-ai-memory-skill.md",
+      "title": "user-ai-memory-skill",
+      "zcodeType": "user",
+      "type": "preference",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_6fa6b171-08f9-4a80-b417-6da852e699b4",
+      "action": "would-import"
+    },
+    {
+      "source": "projects/alpha-4371d60a124eec63/memory/zcode-hooks-config-gotcha.md",
+      "title": "zcode-hooks-config-gotcha",
+      "zcodeType": "project",
+      "type": "project",
+      "scope": "workspace",
+      "workspacePath": "/home/luo/projects/202608/alpha",
+      "importedFrom": "zcode:sess_6fa6b171-08f9-4a80-b417-6da852e699b4",
+      "action": "would-import"
+    }
+  ]
+}

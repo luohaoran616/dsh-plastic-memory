@@ -105,6 +105,92 @@ dsh plugin --profile web add dsh-plastic-memory
 | [基本架构和工具](https://github.com/KKL08/dsh-plastic-memory/blob/main/guide/how-it-works.md) | 记忆怎么写入、带入、治理，以及模型能用的九个工具           |
 | 参与贡献                                                                                   | 相关文档完善中                            |
 
+## 跨端接入（MCP Server 与独立界面）
+
+记忆库之外，本仓库还提供独立的 MCP Server（`plastic-mcp`），让 ZCode、Antigravity 等支持 MCP 的客户端与 DeepSeek Harness 共享同一个记忆库。本仓库也自带一个不依赖 DeepSeek Harness 的 Web 面板，用的是插件里那版原版记忆页。
+
+### MCP Server
+
+```sh
+# stdio 模式（供客户端配置调用）：七个工具 memory_save / memory_search / memory_recall / memory_read / memory_forget / memory_health / memory_source
+PLASTIC_MEMORY_ROOT=~/.dsh/memories node packages/mcp/lib/bin.js
+
+# serve 模式：本机 7788 端口同时提供 MCP（streamable HTTP）、页面接口与 Web 面板的静态页面
+PLASTIC_MEMORY_ROOT=~/.dsh/memories PLASTIC_PROJECT=/home/me/projects/alpha \
+  node packages/mcp/lib/bin.js serve
+```
+
+三个环境变量决定 MCP 端的行为。`PLASTIC_MEMORY_ROOT` 给记忆根的绝对路径，必填。`PLASTIC_CLIENT` 给客户端标识，它会写进记忆来源，缺省是 `unknown`。`PLASTIC_PROJECT` 给各端配置里写死的项目映射，命令的 `project` 入参缺省时用它。serve 模式要求 `PLASTIC_PROJECT` 必填且是绝对路径，缺了服务启动即退出。
+
+MCP 端只提供增查删改。体检处理与全局提升审核在 Web 面板完成。写入始终与插件走同一把跨进程写锁（`.state/lock/write-lock.sqlite`），多端并发安全。
+
+#### 来源锚与回查（ZCode / Antigravity）
+
+`memory_save` 落盘前会拿这次调用收到的 `title`/`text`，到本机对应客户端自己的会话存储里找「刚刚发出这一次调用」的记录（参数全等才认，时间盒 500 毫秒），定位到就给记忆带真锚——`source.sessionId` 是 `zcode:sess_…` 或 `antigravity:<uuid>`、区间是该端自己的序号；定位不到就维持现状的 `mcp:<client>` 与 `[0, 0]`，任何失败都不挡写入。两个存储全程只读：ZCode 的规范会话库 `~/.zcode/cli/db/db.sqlite`（在线时用它的 WAL 旁路文件，不在线按 immutable 打开、不留任何文件），Antigravity 每个会话的明文转写 `~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`。
+
+`memory_source` 回查出处：`{ memoryId, window? }`，与 DSH 插件同参、同上限（至多 24 个事件、每条 400 字）、同渲染。带 `zcode:`/`antigravity:` 锚的在本机对应存储里开窗读；`mcp:`（没定位到）明确告知不可回查；DSH 会话写的提示去 DSH 里回查。别的项目的记忆回 `forbidden`。
+
+相关开关与探针：`PLASTIC_ANCHOR=off` 整个关掉定位（回查不受影响）；`PLASTIC_ZCODE_DIR`、`PLASTIC_ANTIGRAVITY_DIR` 覆盖两端的缺省根；`node packages/mcp/lib/bin.js anchor-doctor` 输出两端存储的只读探针报告（库结构认不认得、在线会话数、转写数）——客户端升级后先跑它，探针红表示该端这一版锚不上，其余功能不受影响。
+
+### Web 面板
+
+7788 端口上的独立页面用的是 DeepSeek Harness 插件里那版原版记忆页，项目分组、健康分、待处理角标、冲突卡片、改写建议、原文对照与最近删除都在。界面源码只有一份，放在仓库根目录的 `client/` 里，DSH 插件与独立页面从同一批文件打包，改界面不会出现两边不一样的情况。原版页面依赖的宿主能力由独立服务补齐。`/memory` 命令的无宿主装配在根包的 `src/standalone/` 里。页面的数据经 `/api/gui/` 下的四个接口供给。体检打分与改写建议走下面说的模型线路。
+
+启动独立页面前先按顺序构建三处产物。根包要先构建，因为 `packages/mcp` 的编译读根包产出的类型声明。
+
+```sh
+pnpm build                          # 根包，产出 lib/ 与 lib/standalone/
+pnpm --filter @plastic/mcp build    # MCP 服务与页面接口
+pnpm --filter @plastic/webui build  # 页面产物，落在 packages/webui/dist
+```
+
+模型线路由四个环境变量决定。`PLASTIC_LLM_BASE_URL` 填 Anthropic Messages 格式的地址，例如 `http://127.0.0.1:3091/api/anthropic`。`PLASTIC_LLM_MODEL` 填模型名。`PLASTIC_LLM_API_KEY` 可选，填了才带 `x-api-key` 头。`PLASTIC_LLM_MAX_TOKENS` 可选，缺省 4096。地址与模型名必须同时给，只给一个时服务启动即报错。两者都不给时服务没有模型，体检与改写建议按各自的既有路径记下没有模型这一原因，浏览与手工治理照常可用。
+
+自动体检缺省不跑。独立服务是常驻的，没人盯着的时候后台体检会白花模型额度，所以只有设 `PLASTIC_AUTO_CHECKUP=1` 才启动调度器，启动日志里写明开或关。体检视图里的自动体检设置照常可读可写。
+
+独立页面不带 `--token` 运行。页面没有输入口令的地方，网关也不发送 Authorization 头，服务只绑定本机回环地址是唯一的防线。
+
+### 客户端配置示例（ZCode / Antigravity）
+
+```json
+{
+  "command": "node",
+  "args": ["/path/to/dsh-plastic-memory/packages/mcp/lib/bin.js"],
+  "env": {
+    "PLASTIC_MEMORY_ROOT": "/home/me/.dsh/memories",
+    "PLASTIC_CLIENT": "zcode",
+    "PLASTIC_PROJECT": "/home/me/projects/alpha"
+  }
+}
+```
+
+ZCode 加在 `~/.zcode/cli/setting.json` 的 `mcp.servers` 下；Antigravity 加在 `~/.gemini/config/mcp_config.json` 的 `mcpServers` 下。
+
+### 设置页（独立端）
+
+`plastic-mcp serve` 起服务后，浏览器打开本机 7788 就是完整面板：记忆页之外还有设置页（原版设置页一行不改地挂上），记忆类型（场景、自建类型、预设）、带入上限、超限处理、证据下钻、主题色都可查可改，中英文可切。设置落在一个跨进程共享的文档（记忆根的 `.state/settings.json`，显式改动叠在出厂值上），改完即热生效：`memory_save` 的类型规则描述、快照分组、页面显示随之变化。提醒灵敏度与提升去处两项在独立端没有消费者，页面置灰并写明原因（值照存，DSH 宿主接入同一份设置后生效）。
+
+`memory_save` 的描述随当前场景带上「各类型记什么、什么时候记」；`memory_recall` 返回项目（全局 + 该项目）的注入快照原文，与下面 hook 注入的是同一段文本。
+
+### ZCode 插件（MCP + 快照 hook）
+
+```sh
+pnpm build && pnpm --filter @plastic/mcp build
+node scripts/build-zcode-plugin.ts      # → integrations/zcode/dist/plastic-memory/
+```
+
+生成的插件同时给出 MCP 服务与一条 `SessionStart` hook：新会话开始时 hook 取会话工作目录问 7788 的快照接口，把记忆快照作为上下文注入（3 秒超时，服务不通就静默，不挡会话）。`PLASTIC_PROJECT` 在插件里写的是 `${CLAUDE_PROJECT_DIR}` 模板（按工作区解析项目），`env` 的值是否展开需实测；不成立时按 `integrations/zcode/README.md` 的回退办法手改 `~/.zcode/cli/config.json`。
+
+### 从 ZCode 导入存量记忆
+
+```sh
+# 先 dry-run 看报告（不写入），确认后加 --apply
+node packages/mcp/lib/bin.js import-zcode --src ~/.zcode/cli/memories \
+  --root ~/.dsh/memories --map <项目hash到路径的JSON映射文件> [--apply]
+```
+
+映射文件是 `{"<项目hash目录名>": "<项目绝对路径>"}` 对象；导入幂等，重复执行自动跳过已导入条目。
+
 ## 数据与隐私
 
 - 记忆以本地文件形式存储在你的设备上，默认在 `~/.dsh/memories`。

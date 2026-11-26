@@ -34,6 +34,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./lib/client.js",
+    "./client/*": "./client/*",
+    "./lib/standalone/*": "./lib/standalone/*",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -68,6 +70,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/cosmokit": "1.9.0",
     "@deepseek-ai/dsh-agent": "0.2.2-rc.5",
     "@deepseek-ai/dsh-agent-instructions": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.5",
@@ -78,6 +81,7 @@
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "@deepseek-ai/dsh-util-values": "0.2.2-rc.5",
     "@deepseek-ai/schemastery": "3.19.0",
+    "@plastic/core": "workspace:*",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
@@ -106,6 +110,7 @@
     }
   },
   "scripts": {
+    "mcp": "node packages/mcp/src/bin.ts",
     "build": "rm -rf lib && tsc -p tsconfig.build.json && node scripts/build-client.ts",
     "host:smoke": "bash scripts/host-smoke.sh",
     "test": "vitest run",

@@ -59,17 +59,33 @@ host_cleanup() {
 # rewrite in scripts/publish-shape.cjs), then npm pack it. Sets TGZ. Extra
 # arguments go to publish-shape.cjs (host-smoke passes --without-optional for
 # the stage that ships without optionalDependencies).
+#
+# @plastic/core is a workspace package: npm pack keeps `workspace:*` as written
+# and `dsh plugin add` cannot resolve it outside the workspace. So core's
+# published shape is staged as a sibling tarball first and the plugin's
+# dependency points at it (--core-tgz); `pnpm publish` rewriting workspace:* to
+# a version is what that stands in for. Core is built before the plugin: the
+# plugin build type-checks against core's declarations.
 host_stage_and_pack() {
+  local core_stage="$STAGE/core" core_tgz
+  mkdir -p "$core_stage"
+  host_run build-core "$REPO/node_modules/.bin/tsc" -p "$REPO/packages/core/tsconfig.build.json"
+  host_run stage-core-lib cp -R "$REPO/packages/core/lib" "$core_stage/lib"
+  host_run stage-core node "$REPO/scripts/publish-shape.cjs" "$REPO/packages/core/package.json" "$core_stage/package.json" "$@"
+  host_run pack-core sh -c 'cd "$1" && npm pack --loglevel=error' _ "$core_stage"
+  core_tgz="$core_stage/$(ls -t "$core_stage"/*.tgz | head -n 1 | xargs basename)"
+  [ -f "$core_tgz" ] || { STEP=pack-core; echo "$HOST_TAG: no core tarball produced" >&2; return 1; }
+
   host_run build "$REPO/node_modules/.bin/tsc" -p "$REPO/tsconfig.build.json" --outDir "$STAGE/lib"
   host_run build-client node "$REPO/scripts/build-client.ts" --outfile "$STAGE/lib/client.js"
   host_run stage-files cp "$REPO/cordis.patch.yml" "$REPO/README.md" "$STAGE/"
   host_run stage-locale cp -R "$REPO/locale" "$STAGE/"
   host_run stage-assets cp -R "$REPO/assets" "$STAGE/"
-  host_run stage node "$REPO/scripts/publish-shape.cjs" "$REPO/package.json" "$STAGE/package.json" "$@"
+  host_run stage node "$REPO/scripts/publish-shape.cjs" "$REPO/package.json" "$STAGE/package.json" "$@" --core-tgz "$core_tgz"
   host_run pack sh -c 'cd "$1" && npm pack --loglevel=error' _ "$STAGE"
   TGZ="$STAGE/$(ls -t "$STAGE"/*.tgz | head -n 1 | xargs basename)"
   [ -f "$TGZ" ] || { STEP=pack; echo "$HOST_TAG: no tarball produced" >&2; return 1; }
-  echo "$HOST_TAG: packed          = $(basename "$TGZ")"
+  echo "$HOST_TAG: packed          = $(basename "$TGZ") (core: $(basename "$core_tgz"))"
 }
 
 # Install the pinned host into the cache if missing. Two pnpm settings mirror

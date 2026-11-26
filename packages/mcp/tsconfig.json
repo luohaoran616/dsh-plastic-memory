@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src"],
+  "compilerOptions": {
+    // 类型检查时的身份统一：根包按源码参与（运行时同源），避免 lib/*.d.ts 与 src/*.ts 两个 MemoryStore 身份
+    "paths": {
+      "dsh-plastic-memory/lib/standalone/*": ["../../src/standalone/*"]
+    }
+  }
+}

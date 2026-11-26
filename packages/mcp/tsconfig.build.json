@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.build.json",
+  "compilerOptions": {
+    "outDir": "lib",
+    "rootDir": "src",
+    "declaration": true,
+    // 发布构建对根包只取编译产物里的声明（@plastic/core 转发包指向 src，会把源码拉进 rootDir；
+    // dsh-plastic-memory/lib/* 与根包 lib/*.d.ts 是同一套身份，声明检查不跨源）
+    "paths": {
+      "@plastic/core": ["../../lib/index.d.ts"],
+      "@plastic/core/*.ts": ["../../lib/*.d.ts"],
+      "dsh-plastic-memory/lib/standalone/*": ["../../lib/standalone/*.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.spec.ts", "src/spec-helpers.ts", "src/test-hold-lock.ts"]
+}

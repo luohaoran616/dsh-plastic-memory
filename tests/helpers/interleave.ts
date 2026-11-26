@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import fc from 'fast-check'
+import { afterAll } from 'vitest'
 
 /**
  * 交错测试夹具：让 fast-check 的调度器决定文件系统调用的全序。
@@ -346,11 +347,27 @@ async function observe<W, Op>(subject: Subject<W, Op>, w: W, root: string, outco
   }
 }
 
-/** 铺好的初始盘面：seedKey → 模板目录。进程退出时删掉。 */
+/**
+ * 铺好的初始盘面：seedKey → 模板目录。所在用例文件收尾时删掉：vitest 收尾是直接终止 worker，
+ * `process` 的 exit 回调不跑（只留它当兜底），挂在 exit 上每个 worker 漏一个 pm-interleave-seed-*。
+ */
 const templates = new Map<string, Promise<string>>()
 let templateParent: string | undefined
 let templateParentReady: Promise<string> | undefined
-process.once('exit', () => { if (templateParent !== undefined) rmSync(templateParent, { recursive: true, force: true }) })
+const dropTemplates = () => {
+  if (templateParent === undefined) return
+  try {
+    rmSync(templateParent, { recursive: true, force: true })
+  } catch {
+    return // 删不掉（有用例超时后后台还在写）：留着，交给 exit 回调再试，不让 afterAll 自己红
+  }
+  templateParent = undefined
+  templateParentReady = undefined
+  templates.clear()
+}
+process.once('exit', dropTemplates)
+// 顶层注册：引用本文件的每个用例文件各挂一次 afterAll
+afterAll(dropTemplates)
 
 async function templateFor<W, Op>(subject: Subject<W, Op>, key: string): Promise<string> {
   const cache = currentCase.getStore()?.templates ?? templates

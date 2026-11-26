@@ -5,7 +5,8 @@
     "outDir": "lib",
     "rootDir": "src",
     "rewriteRelativeImportExtensions": true,
-    "declaration": false,
+    // lib/standalone 的类型声明被 packages/mcp 的编译读取，所以这里要产出声明
+    "declaration": true,
     "sourceMap": false
   },
   "include": ["src"]
