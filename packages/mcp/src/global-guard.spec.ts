@@ -50,23 +50,23 @@ afterEach(async () => {
 })
 
 interface Saved { id: string; path: string }
-interface RecordView { id: string; scope: string; workspacePath?: string; status: string; 'needs-promote-review'?: boolean }
+interface RecordView { id: string; scope: string; workspacePath?: string; status: string; globalCandidate?: boolean }
 
 const globalDirOf = (root: string) => `${join(root, GLOBAL_DIR)}${sep}`
 
 describe('MCP 全局守卫（R12 / Review Focus #5）', () => {
-  it('project: "global" 落成 workspace 记录并带 needs-promote-review: true，不写进 global 作用域', async () => {
+  it('project: "global" 走写入管线降级：workspace 记录带 globalCandidate: true，不写进 global 作用域', async () => {
     const { client, root } = await startServer({ PLASTIC_PROJECT: '/proj/alpha' })
     const saved = await callJson<Saved>(client, 'memory_save', {
-      title: '全局候选约定', text: '所有项目都适用的约定', project: 'global', origin: 'user-stated',
+      title: '全局候选约定', text: '所有项目都适用的约定', project: 'global', origin: 'user-stated', type: 'knowledge',
     })
     expect(saved.path.startsWith(`${join(root, workspaceDirName('/proj/alpha'))}${sep}`)).toBe(true)
     expect(saved.path.startsWith(globalDirOf(root))).toBe(false)
-    expect(await frontmatterOf(saved.path)).toMatchObject({ 'needs-promote-review': true })
+    expect(await frontmatterOf(saved.path)).toMatchObject({ globalCandidate: true })
 
     const read = await callJson<RecordView>(client, 'memory_read', { id: saved.id })
     expect(read).toMatchObject({
-      scope: 'workspace', workspacePath: '/proj/alpha', status: 'active', 'needs-promote-review': true,
+      scope: 'workspace', workspacePath: '/proj/alpha', status: 'active', globalCandidate: true,
     })
 
     // 不在 global 作用域：只查全局看不到它，按当前项目（= PLASTIC_PROJECT）看得到
@@ -78,12 +78,12 @@ describe('MCP 全局守卫（R12 / Review Focus #5）', () => {
   it('PLASTIC_PROJECT=global 也走同一条守卫：不落 global 作用域、带标记、workspace 退回进程 cwd', async () => {
     const { client, root } = await startServer({ PLASTIC_PROJECT: 'global' })
     const saved = await callJson<Saved>(client, 'memory_save', {
-      title: '环境配置里的全局', text: '环境变量不能成为绕行通道', origin: 'model-observed',
+      title: '环境配置里的全局', text: '环境变量不能成为绕行通道', origin: 'model-observed', type: 'knowledge',
     })
     expect(saved.path.startsWith(globalDirOf(root))).toBe(false)
-    expect(await frontmatterOf(saved.path)).toMatchObject({ 'needs-promote-review': true })
+    expect(await frontmatterOf(saved.path)).toMatchObject({ globalCandidate: true })
     const read = await callJson<RecordView>(client, 'memory_read', { id: saved.id })
-    expect(read).toMatchObject({ scope: 'workspace', workspacePath: PACKAGE_ROOT, 'needs-promote-review': true })
+    expect(read).toMatchObject({ scope: 'workspace', workspacePath: PACKAGE_ROOT, globalCandidate: true })
   })
 
   it('非 global 写入不带标记；大小写不同只是普通项目路径，不算全局', async () => {
@@ -95,28 +95,30 @@ describe('MCP 全局守卫（R12 / Review Focus #5）', () => {
     ]
     for (const [index, entry] of cases.entries()) {
       const saved = await callJson<Saved>(client, 'memory_save', {
-        title: `普通写入 ${index}`, text: `正文 ${index}`, origin: 'user-stated', ...(entry.project === undefined ? {} : { project: entry.project }),
+        title: `普通写入 ${index}`, text: `正文 ${index}`, origin: 'user-stated', type: 'knowledge', ...(entry.project === undefined ? {} : { project: entry.project }),
       })
       expect(saved.path.startsWith(globalDirOf(root))).toBe(false)
       expect(saved.path.startsWith(`${join(root, workspaceDirName(entry.expectedWorkspace))}${sep}`)).toBe(true)
-      expect(await frontmatterOf(saved.path)).not.toHaveProperty('needs-promote-review')
+      expect(await frontmatterOf(saved.path)).not.toHaveProperty('globalCandidate')
       expect(await callJson<RecordView>(client, 'memory_read', { id: saved.id })).toMatchObject({
         scope: 'workspace', workspacePath: entry.expectedWorkspace,
       })
     }
   })
 
-  it('工具面没有任何绕过路径：没有提升工具，memory_save 也没有 scope/needs-promote-review 入参', async () => {
+  it('工具面没有任何绕过路径：没有提升工具，memory_save 也没有 scope 入参', async () => {
     const { client } = await startServer()
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name).sort()).toEqual([
-      'memory_forget', 'memory_health', 'memory_read', 'memory_save', 'memory_search',
+      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
     ])
     for (const tool of tools) expect(tool.name).not.toContain('promote')
     const save = tools.find(tool => tool.name === 'memory_save')!
     const schema = save.inputSchema as { properties?: Record<string, unknown> }
-    expect(Object.keys(schema.properties ?? {}).sort()).toEqual(['origin', 'project', 'text', 'title', 'type'])
+    expect(Object.keys(schema.properties ?? {}).sort()).toEqual([
+      'confidence', 'force', 'id', 'origin', 'project', 'summary', 'supersedes', 'tags', 'text', 'title', 'type', 'validFrom', 'validTo',
+    ])
     expect(Object.keys(schema.properties ?? {})).not.toContain('scope')
-    expect(Object.keys(schema.properties ?? {})).not.toContain('needs-promote-review')
+    expect(Object.keys(schema.properties ?? {})).not.toContain('globalCandidate')
   })
 })

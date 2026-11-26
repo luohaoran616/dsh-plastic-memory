@@ -106,7 +106,7 @@ describe('跨进程并发与崩溃恢复', () => {
       name: title, content: `host-${i}`, summary: `host 摘要 ${i}`,
     })))
     const mcpWrites = titles.map((title, i) => callJson<{ id: string; path: string }>(child.client, 'memory_save', {
-      title, text: `mcp-${i}`, project: PROJECT, origin: 'model-observed',
+      title, text: `mcp-${i}`, project: PROJECT, origin: 'model-observed', type: 'knowledge',
     }))
     const [, mcpRecords] = await Promise.all([Promise.all(hostWrites), Promise.all(mcpWrites)])
 
@@ -150,7 +150,7 @@ describe('跨进程并发与崩溃恢复', () => {
 
     // 真实 MCP stdio 请求：写入一条记录，然后在锁内停住。响应永远不会回来（进程会被杀），只等它落定。
     const pending = callJson<{ id: string }>(child.client, 'memory_save', {
-      title: '持锁记录', text: '锁内等待', project: PROJECT, origin: 'user-stated',
+      title: '持锁记录', text: '锁内等待', project: PROJECT, origin: 'user-stated', type: 'knowledge',
     }).catch((err: unknown) => err)
     await waitForSignal(signals, 'held')
     // 锁降级时 held 仍会被写、kill 后的写入也会成功（假绿）；先确认子进程确实拿到了跨进程写锁

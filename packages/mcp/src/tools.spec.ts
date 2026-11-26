@@ -108,7 +108,7 @@ describe('MCP 工具面（D2）', () => {
     const { client } = await startServer()
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name).sort()).toEqual([
-      'memory_forget', 'memory_health', 'memory_read', 'memory_save', 'memory_search',
+      'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
     ])
     const byName = new Map(tools.map(tool => [tool.name, tool]))
     for (const tool of tools) expect(tool.description?.trim().length ?? 0).toBeGreaterThan(0)
@@ -118,8 +118,12 @@ describe('MCP 工具面（D2）', () => {
       properties?: Record<string, unknown>
       required?: string[]
     }
-    expect(Object.keys(schemaOf('memory_save').properties ?? {}).sort()).toEqual(['origin', 'project', 'text', 'title', 'type'])
+    expect(Object.keys(schemaOf('memory_save').properties ?? {}).sort()).toEqual([
+      'confidence', 'force', 'id', 'origin', 'project', 'summary', 'supersedes', 'tags', 'text', 'title', 'type', 'validFrom', 'validTo',
+    ])
     expect(schemaOf('memory_save').required?.slice().sort()).toEqual(['origin', 'text', 'title'])
+    expect(Object.keys(schemaOf('memory_recall').properties ?? {}).sort()).toEqual(['project'])
+    expect(schemaOf('memory_recall').required ?? []).toEqual([])
     expect(Object.keys(schemaOf('memory_search').properties ?? {}).sort()).toEqual(['project', 'query', 'topK'])
     expect(schemaOf('memory_search').required).toEqual(['query'])
     expect(Object.keys(schemaOf('memory_read').properties ?? {})).toEqual(['id'])
@@ -133,7 +137,7 @@ describe('MCP 工具面（D2）', () => {
     const server = await startServer()
     const text = '第一行摘要\n第二行正文细节'
     const saved = await callJson<MemorySaveResult>(server.client, 'memory_save', {
-      title: '包管理用 pnpm', text, origin: 'user-stated',
+      title: '包管理用 pnpm', text, origin: 'user-stated', type: 'knowledge',
     })
     expect(saved.id).toMatch(/^mem_/)
 
@@ -171,8 +175,24 @@ describe('MCP 工具面（D2）', () => {
 
   it('memory_search 的 topK 缺省 8、可覆盖', async () => {
     const { client } = await startServer()
-    for (let i = 0; i < 10; i++) {
-      await callJson(client, 'memory_save', { title: `alpha note ${i}`, text: `alpha 正文 ${i}`, origin: 'model-observed' })
+    const topics: Array<[string, string]> = [
+      ['检索打分', 'token 命中标题加两档分，未命中退回词项兜底'],
+      ['写入管线', '候选先补全，再过格式校验与结构去重，最后落盘'],
+      ['快照组装', 'core 区装全文，索引区按类型分组申领预算'],
+      ['类型注册表', '内置五类加预设两类，自建同名即改定义'],
+      ['设置文档', '出厂值叠 set 减 unset，版本号防写入冲突'],
+      ['证据下钻', 'strict 档按锚回查会话出处，off 档不查'],
+      ['作用域解析', '可见集合是全局加当前项目，目录按路径哈希命名'],
+      ['去重阈值', '实体重合加文本相似度双门槛，超过即拦下'],
+      ['密钥遮盖', '高危密钥拒存，疑似密钥确认后放行并遮显示'],
+      ['衰退期', 'project 七天未确认先衰，knowledge 九十天'],
+    ]
+    for (const [i, [topic, detail]] of topics.entries()) {
+      await callJson(client, 'memory_save', {
+        title: `alpha 主题 ${i}：${topic}`,
+        text: `alpha 的第 ${i} 号笔记，主题是${topic}。${detail}。要点编号 ${i * 11 + 3}。`,
+        origin: 'model-observed', type: 'knowledge',
+      })
     }
     expect((await callJson<MemorySearchResult>(client, 'memory_search', { query: 'alpha' })).hits).toHaveLength(8)
     expect((await callJson<MemorySearchResult>(client, 'memory_search', { query: 'alpha', topK: 3 })).hits).toHaveLength(3)
@@ -181,7 +201,7 @@ describe('MCP 工具面（D2）', () => {
   it('origin 映射 sourceMode 与置信上限：model-observed → environment-observed / 0.8', async () => {
     const { client } = await startServer()
     const saved = await callJson<MemorySaveResult>(client, 'memory_save', {
-      title: '观察到的环境事实', text: '这台机器的包管理器是 pnpm', origin: 'model-observed',
+      title: '观察到的环境事实', text: '这台机器的包管理器是 pnpm', origin: 'model-observed', type: 'knowledge',
     })
     const read = await callJson<MemoryRecordView>(client, 'memory_read', { id: saved.id })
     expect(read.source).toEqual({ sessionId: 'mcp:zcode', eventRange: [0, 0], sourceMode: 'environment-observed' })
@@ -189,12 +209,26 @@ describe('MCP 工具面（D2）', () => {
 
     const invalid = await client.callTool({ name: 'memory_save', arguments: { title: 't', text: 'x', origin: 'user-guessed' } })
     expect(invalid.isError).toBe(true)
+
+    // 新五档原名直接通行：agent-inferred 原样落盘
+    const inferred = await callJson<MemorySaveResult>(client, 'memory_save', {
+      title: '推断出的结论', text: '两次失败都发生在同一步', origin: 'agent-inferred', type: 'knowledge',
+    })
+    const readInferred = await callJson<MemoryRecordView>(client, 'memory_read', { id: inferred.id })
+    expect(readInferred.source).toMatchObject({ sessionId: 'mcp:zcode', sourceMode: 'agent-inferred' })
+
+    // 新建缺 type 被拒（reason 带可选类型），不再悄悄落到 knowledge
+    const noType = await callJson<{ ok: boolean; kind: string; reason: string }>(client, 'memory_save', {
+      title: '没有类型', text: '正文', origin: 'user-stated',
+    })
+    expect(noType).toMatchObject({ ok: false, kind: 'rejected' })
+    expect(noType.reason).toContain('type')
   })
 
   it('memory_forget 只走软删：文件进 .archive/，memory_read 返回已删状态', async () => {
     const { client } = await startServer()
     const saved = await callJson<MemorySaveResult>(client, 'memory_save', {
-      title: '将被遗忘的记录', text: '可恢复的正文', origin: 'user-stated',
+      title: '将被遗忘的记录', text: '可恢复的正文', origin: 'user-stated', type: 'knowledge',
     })
     await expect(readFile(saved.path, 'utf8')).resolves.toContain('可恢复的正文')
 
@@ -211,7 +245,7 @@ describe('MCP 工具面（D2）', () => {
     const { client, root } = await startServer({ env: { PLASTIC_PROJECT: '/proj/default' } })
     const alpha = '/proj/alpha'
     const saved = await callJson<MemorySaveResult>(client, 'memory_save', {
-      title: 'alpha 独有 note', text: 'alpha 正文', project: alpha, origin: 'user-stated',
+      title: 'alpha 独有 note', text: 'alpha 正文', project: alpha, origin: 'user-stated', type: 'knowledge',
     })
     expect(saved.path.startsWith(`${join(root, workspaceDirName(alpha))}${sep}`)).toBe(true)
 
@@ -225,7 +259,7 @@ describe('MCP 工具面（D2）', () => {
 
     // project 缺省写进 PLASTIC_PROJECT，不落 cwd
     const fallback = await callJson<MemorySaveResult>(client, 'memory_save', {
-      title: '缺省项目 note', text: '按 PLASTIC_PROJECT 落盘', origin: 'user-stated',
+      title: '缺省项目 note', text: '按 PLASTIC_PROJECT 落盘', origin: 'user-stated', type: 'knowledge',
     })
     expect(fallback.path.startsWith(`${join(root, workspaceDirName('/proj/default'))}${sep}`)).toBe(true)
     expect((await callJson<MemoryRecordView>(client, 'memory_read', { id: fallback.id })).workspacePath).toBe('/proj/default')
@@ -322,7 +356,7 @@ describe('MCP 工具面（D2）', () => {
     await writeFile(join(dir, WORKSPACE_MARKER), '/proj/other\n')
     const server = await startServer({ root })
     const saved = await callJson<MemorySaveResult>(server.client, 'memory_save', {
-      title: '标记不符的写入', text: '仍要能落盘', project, origin: 'user-stated',
+      title: '标记不符的写入', text: '仍要能落盘', project, origin: 'user-stated', type: 'knowledge',
     })
     expect(saved.path.startsWith(`${dir}${sep}`)).toBe(true)
     await waitFor(() => server.stderr().includes('[plastic-memory]'))

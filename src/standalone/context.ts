@@ -26,9 +26,11 @@ import { assembleSnapshot, type SnapshotUsage } from '../snapshot.ts'
 import type { TypeRegistry } from '../type-registry.ts'
 import { goneCopies } from '../tools/workspace-gate.ts'
 
-/** 上下文平面的参数：记忆根必给；项目、日志、时钟、写锁可选（锁缺省自建一把，同进程多平面注入同一把）。 */
+/** 上下文平面的参数：记忆根必给；项目、客户端标识、日志、时钟、写锁可选（锁缺省自建一把，同进程多平面注入同一把）。 */
 export interface ContextPlaneOptions {
   memoryRoot: string
+  /** 客户端标识（PLASTIC_CLIENT）：写入路径拿它标记记录来源（`mcp:<client>`）。 */
+  client?: string
   /** 各端配置里写死的那个项目（PLASTIC_PROJECT）：resolveProject 缺省时用它。不带时快照只带全局、save 无项目落点。 */
   project?: string
   log?: MemoryLogger
@@ -48,6 +50,7 @@ type PlaneSidecar = SidecarStore<
 /** 上下文平面。settings 是具体类（GUI 平面要它的 snapshot/mutate）；registry 是转发对象，refresh 后引用不用换。 */
 export interface ContextPlane {
   readonly memoryRoot: string
+  readonly client: string
   readonly project: string | undefined
   readonly lock: RootLock
   readonly sidecar: PlaneSidecar
@@ -117,6 +120,7 @@ export async function createContextPlane(options: ContextPlaneOptions): Promise<
   }
   return {
     memoryRoot,
+    client: options.client ?? 'unknown',
     project: options.project,
     lock: rootLock,
     sidecar,

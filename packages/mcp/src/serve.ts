@@ -6,10 +6,8 @@ import { extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
-import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
-import { createMemoryTools, registerMemoryTools, type MemoryTools } from './tools.ts'
+import { createMemoryTools, type MemoryContextPort, type MemoryToolset } from './tools.ts'
 import { API_PREFIX, sendError, sendJson } from './http-util.ts'
 import { handleGuiRequest, type GuiPlanePort } from './gui-http.ts'
 
@@ -66,8 +64,8 @@ export function parseServeArgs(argv: string[]): ServeArgs {
 }
 
 export interface MemoryHttpServerOptions {
-  /** MCP 工具面：/mcp 端点用它应答。 */
-  tools: MemoryTools
+  /** MCP 工具面：/mcp 端点用它应答（每个请求现读设置、按当前类型表重注册）。 */
+  toolset: MemoryToolset
   /** 缺省 DEFAULT_PORT；0 = 随机空闲端口。 */
   port?: number
   /** 启用 Bearer 鉴权（/api/* 与 /mcp）。 */
@@ -183,7 +181,7 @@ function requiresAuth(pathname: string): boolean {
   return pathname === '/mcp' || pathname === API_PREFIX || pathname.startsWith(`${API_PREFIX}/`)
 }
 
-async function handleMcp(req: IncomingMessage, res: ServerResponse, tools: MemoryTools, log?: MemoryLogger): Promise<void> {
+async function handleMcp(req: IncomingMessage, res: ServerResponse, toolset: MemoryToolset, log?: MemoryLogger): Promise<void> {
   if (req.method !== 'POST') {
     sendJson(res, 405, {
       jsonrpc: '2.0',
@@ -194,7 +192,8 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, tools: Memor
   }
   // stateless 模式每个请求必须用新的 transport（SDK 契约：复用会串消息 id），server 跟着请求建、响应后关
   const server = new McpServer({ name: 'plastic-memory', version: pkg.version })
-  registerMemoryTools(server, tools)
+  // 注册前现读一次设置：类型配置变了，这条请求看到的描述与枚举就是新的（register 内部也比对）
+  await toolset.register(server)
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
   try {
     await server.connect(transport)
@@ -213,7 +212,7 @@ async function handleMcp(req: IncomingMessage, res: ServerResponse, tools: Memor
 }
 
 export async function startMemoryServer(options: MemoryHttpServerOptions): Promise<MemoryHttpServer> {
-  const { tools, token, gui } = options
+  const { toolset, token, gui } = options
   const log = options.log
   const staticRoot = staticRootOf(options.webuiDir ?? DEFAULT_WEBUI_DIR)
   // 鉴权之后才轮到界面接口；来源比对用服务自己的地址，监听之后才知道端口
@@ -229,7 +228,7 @@ export async function startMemoryServer(options: MemoryHttpServerOptions): Promi
       if (await handleGuiRequest(gui, req, res, url, allowedOrigin)) return
     }
     if (url.pathname === '/mcp') {
-      await handleMcp(req, res, tools, log)
+      await handleMcp(req, res, toolset, log)
       return
     }
     if (url.pathname === API_PREFIX || url.pathname.startsWith(`${API_PREFIX}/`)) {
@@ -281,33 +280,12 @@ export async function startMemoryServer(options: MemoryHttpServerOptions): Promi
   return { host: LOOPBACK_HOST, port: address.port, url: `http://${LOOPBACK_HOST}:${address.port}`, server, close }
 }
 
-/** bin 的 serve 分支解析出来的环境配置（与 stdio 模式同一组 PLASTIC_*）。 */
+/** bin 的 serve 分支解析出来的环境配置：GUI 平面与上下文平面都由 bin 装好传进来。 */
 export interface ServeCliConfig {
-  root: string
-  client: string
-  project?: string
-  /** bin 装配好的无宿主平面；stdio 模式不涉及。 */
-  gui?: GuiPlanePort
-  /** 记忆根写锁：与 GUI 平面共用同一把（同进程两处不互相抢锁）；缺省自建。 */
-  lock?: RootLock
-}
-
-/**
- * serve 模式的核心组装：记忆根写锁缺省自建，给了就用给的那把。
- * bin 的 serve 分支建一把锁同时交给 core 与 GUI 平面，同一进程里两处写不再各开一把锁库连接。
- */
-export async function createServeCore(options: {
-  root: string
-  client: string
-  log: MemoryLogger
-  lock?: RootLock
-}): Promise<MemoryCore> {
-  return createMemoryCore({
-    root: options.root,
-    client: options.client,
-    log: options.log,
-    ...(options.lock === undefined ? {} : { lock: options.lock }),
-  })
+  /** bin 装配好的无宿主平面：/api/gui 走它。 */
+  gui: GuiPlanePort
+  /** 平面自带的上下文平面：/mcp 的工具建在它上面，与界面共用同一张文件表、一份设置、一把锁。 */
+  context: MemoryContextPort
 }
 
 /**
@@ -352,30 +330,15 @@ export function parseGuiEnv(env: NodeJS.ProcessEnv): {
   }
 }
 
-/** `plastic-mcp serve` 的进程入口：起 core + 工具 + HTTP 服务，SIGINT/SIGTERM 时先停服务再关 core。 */
+/** `plastic-mcp serve` 的进程入口：MCP 工具与 GUI 平面共用同一个上下文平面（一张文件表、一份设置、一把锁），SIGINT/SIGTERM 先停服务再释放平面。 */
 export async function runServeCli(argv: string[], config: ServeCliConfig, log: MemoryLogger): Promise<void> {
   const args = parseServeArgs(argv)
-  const core = await createServeCore({
-    root: config.root,
-    client: config.client,
-    log,
-    ...(config.lock === undefined ? {} : { lock: config.lock }),
+  const toolset = createMemoryTools(config.context)
+  const server = await startMemoryServer({
+    toolset, port: args.port, log,
+    gui: config.gui,
+    ...(args.token === undefined ? {} : { token: args.token }),
   })
-  const tools = createMemoryTools(core, {
-    client: config.client,
-    ...(config.project === undefined ? {} : { project: config.project }),
-  })
-  let server: MemoryHttpServer
-  try {
-    server = await startMemoryServer({
-      tools, port: args.port, log,
-      ...(config.gui === undefined ? {} : { gui: config.gui }),
-      ...(args.token === undefined ? {} : { token: args.token }),
-    })
-  } catch (error) {
-    await core.close()
-    throw error
-  }
   log.info(`HTTP 模式已启动：${server.url}（仅本机绑定${args.token === undefined ? '，未启用鉴权' : '，Bearer 鉴权已启用'}）`)
   log.info(staticRootOf(DEFAULT_WEBUI_DIR) === undefined
     ? 'WebUI 产物不存在，当前只提供 /api/gui 与 /mcp'
@@ -386,8 +349,6 @@ export async function runServeCli(argv: string[], config: ServeCliConfig, log: M
     if (closing) return
     closing = true
     void server.close()
-      .catch(() => {})
-      .then(() => core.close())
       .catch(() => {})
       .finally(() => process.exit(code))
   }

@@ -353,13 +353,10 @@ describe('ZCode 记忆导入器', () => {
     expect((await readFile(join(imported!.dir, WORKSPACE_MARKER), 'utf8')).trim()).toBe(f.workspaceAlpha)
 
     // 同一路径经 MCP 工具写入（传映射文件里的原值）：工具自己 resolve，落点必须与导入记录同目录
-    const core = await createMemoryCore({ root: f.root, client: 'spec', log: silentLog })
-    try {
-      const tools = createMemoryTools(core, { client: 'spec' })
-      await tools.save({ title: 'mcp-same-workspace', text: '同一项目的另一条记忆', project: rawValue, origin: 'user-stated' })
-    } finally {
-      await core.close()
-    }
+    const { createContextPlane } = await import('dsh-plastic-memory/lib/standalone/context.js')
+    const context = await createContextPlane({ memoryRoot: f.root, client: 'spec', log: silentLog })
+    const toolset = createMemoryTools(context)
+    await toolset.tools.save({ title: 'mcp-same-workspace', text: '同一项目的另一条记忆', project: rawValue, origin: 'user-stated', type: 'knowledge' })
     const mcpSaved = (await locatedOf(f.root)).find(located => located.record.name === 'mcp-same-workspace')
     expect(mcpSaved?.record.workspacePath).toBe(f.workspaceAlpha)
     expect(mcpSaved?.dir).toBe(imported?.dir)

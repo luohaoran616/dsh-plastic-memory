@@ -6,13 +6,12 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { createMemoryCore, type MemoryCore } from '@plastic/core/factory.ts'
 import { memoryRecordSchema } from '@plastic/core/record-schema.ts'
 import type { RootLock } from '@plastic/core/root-lock.ts'
 import type { MemoryLogger } from '@plastic/core/storage/table.ts'
 import type { GuiPlanePort } from './gui-http.ts'
 import {
-  DEFAULT_PORT, DEFAULT_WEBUI_DIR, LOOPBACK_HOST, createServeCore, parseGuiEnv, parseServeArgs, startMemoryServer, type MemoryHttpServer,
+  DEFAULT_PORT, DEFAULT_WEBUI_DIR, LOOPBACK_HOST, parseGuiEnv, parseServeArgs, startMemoryServer, type MemoryHttpServer,
 } from './serve.ts'
 import { createMemoryTools } from './tools.ts'
 import { baseEnv, callJson } from './spec-helpers.ts'
@@ -25,6 +24,18 @@ import { baseEnv, callJson } from './spec-helpers.ts'
  */
 
 const silentLog: MemoryLogger = { info() {}, warn() {}, error() {} }
+
+/** 上下文平面（根包编译产物）：serve 用例的 /mcp 工具建在它上面。 */
+type ContextPlaneModule = typeof import('dsh-plastic-memory/lib/standalone/context.js')
+type ContextPlane = import('dsh-plastic-memory/lib/standalone/context.js').ContextPlane
+
+async function startContext(root: string, client: string, lock?: RootLock): Promise<ContextPlane> {
+  const { createContextPlane } = await import('dsh-plastic-memory/lib/standalone/context.js') as ContextPlaneModule
+  return createContextPlane({
+    memoryRoot: root, client, log: silentLog,
+    ...(lock === undefined ? {} : { lock }),
+  })
+}
 
 /** bin 的路径：serve 子命令的进程级用例用它起真子进程。 */
 const BIN = fileURLToPath(new URL('./bin.ts', import.meta.url))
@@ -98,13 +109,13 @@ describe('serve 接线（D4）', () => {
   it('带 gui 起服务：静态首页可读、命令接口通、关闭时释放平面', async () => {
     const root = await mkdtemp(join(tmpdir(), 'pm-mcp-serve-'))
     const webuiDir = await mkdtemp(join(tmpdir(), 'pm-mcp-webui-'))
-    const core = await createMemoryCore({ root, client: 'serve-spec', log: silentLog })
-    const tools = createMemoryTools(core, { client: 'serve-spec', project: process.cwd() })
+    const context = await startContext(root, 'serve-spec')
+    const toolset = createMemoryTools(context)
     const plane = createFakePlane()
     let server: MemoryHttpServer | undefined
     try {
       await writeFile(join(webuiDir, 'index.html'), '<!doctype html><html><body>记忆页</body></html>')
-      server = await startMemoryServer({ tools, port: 0, webuiDir, gui: plane, log: silentLog })
+      server = await startMemoryServer({ toolset, port: 0, webuiDir, gui: plane, log: silentLog })
 
       const index = await fetch(`${server.url}/`)
       expect(index.status).toBe(200)
@@ -123,7 +134,6 @@ describe('serve 接线（D4）', () => {
       expect(plane.dispose).toHaveBeenCalledTimes(1)
     } finally {
       if (server !== undefined) await server.close().catch(() => {})
-      await core.close()
       await rm(root, { recursive: true, force: true })
       await rm(webuiDir, { recursive: true, force: true })
     }
@@ -131,12 +141,12 @@ describe('serve 接线（D4）', () => {
 
   it('旧的 REST 管理面已删：/api 下只剩界面接口，其余路径 404', async () => {
     const root = await mkdtemp(join(tmpdir(), 'pm-mcp-serve-404-'))
-    const core = await createMemoryCore({ root, client: 'serve-spec', log: silentLog })
-    const tools = createMemoryTools(core, { client: 'serve-spec', project: process.cwd() })
+    const context = await startContext(root, 'serve-spec')
+    const toolset = createMemoryTools(context)
     const plane = createFakePlane()
     let server: MemoryHttpServer | undefined
     try {
-      server = await startMemoryServer({ tools, port: 0, gui: plane, log: silentLog })
+      server = await startMemoryServer({ toolset, port: 0, gui: plane, log: silentLog })
       for (const path of ['/api/records', '/api/health', '/api/promotions']) {
         const response = await fetch(new URL(path, server.url))
         expect(response.status).toBe(404)
@@ -150,7 +160,6 @@ describe('serve 接线（D4）', () => {
       expect(command.status).toBe(200)
     } finally {
       if (server !== undefined) await server.close().catch(() => {})
-      await core.close()
       await rm(root, { recursive: true, force: true })
     }
   })
@@ -158,23 +167,22 @@ describe('serve 接线（D4）', () => {
 
 interface HttpFixture {
   root: string
-  core: MemoryCore
   server: MemoryHttpServer
   plane: GuiPlanePort
 }
 
-/** 起一个带假平面与真 core 的 HTTP 服务；用例自己关。 */
+/** 起一个带假平面与真上下文平面的 HTTP 服务；用例自己关。 */
 async function startHttp(options: { token?: string; webuiDir?: string } = {}): Promise<HttpFixture> {
   const root = await mkdtemp(join(tmpdir(), 'pm-mcp-http-'))
-  const core = await createMemoryCore({ root, client: 'http-spec', log: silentLog })
-  const tools = createMemoryTools(core, { client: 'http-spec', project: process.cwd() })
+  const context = await startContext(root, 'http-spec')
+  const toolset = createMemoryTools(context)
   const plane = createFakePlane()
   const server = await startMemoryServer({
-    tools, port: 0, gui: plane, log: silentLog,
+    toolset, port: 0, gui: plane, log: silentLog,
     ...(options.token === undefined ? {} : { token: options.token }),
     ...(options.webuiDir === undefined ? {} : { webuiDir: options.webuiDir }),
   })
-  return { root, core, server, plane }
+  return { root, server, plane }
 }
 
 /** 往界面接口发一条命令：假平面回 `{ kind: 'success', text: '完成' }`。 */
@@ -196,7 +204,6 @@ describe('HTTP 模式（serve）', () => {
       expect(address).not.toMatchObject({ address: '0.0.0.0' })
     } finally {
       await http.server.close()
-      await http.core.close()
       await rm(http.root, { recursive: true, force: true })
     }
   })
@@ -216,7 +223,6 @@ describe('HTTP 模式（serve）', () => {
       expect((await fetch(`${http.server.url}/mcp`, { method: 'POST', headers: { authorization: 'Bearer s3cret' } })).status).not.toBe(401)
     } finally {
       await http.server.close()
-      await http.core.close()
       await rm(http.root, { recursive: true, force: true })
     }
 
@@ -226,7 +232,6 @@ describe('HTTP 模式（serve）', () => {
       expect((await postCommand(open.server)).status).toBe(200)
     } finally {
       await open.server.close()
-      await open.core.close()
       await rm(open.root, { recursive: true, force: true })
     }
   })
@@ -251,13 +256,12 @@ describe('HTTP 模式（serve）', () => {
       expect((await postCommand(http.server, { authorization: 'Bearer s3cret' })).status).toBe(200)
     } finally {
       await http.server.close()
-      await http.core.close()
       await rm(http.root, { recursive: true, force: true })
       await rm(webuiDir, { recursive: true, force: true })
     }
   })
 
-  it('/mcp 用 Streamable HTTP 暴露同一组五工具，写入经同一份 core 落盘', async () => {
+  it('/mcp 用 Streamable HTTP 暴露同一组六工具，写入与界面共用同一个上下文平面', async () => {
     const http = await startHttp()
     const client = new Client({ name: 'http-spec', version: '0.0.0' })
     const transport = new StreamableHTTPClientTransport(new URL('/mcp', http.server.url))
@@ -265,18 +269,17 @@ describe('HTTP 模式（serve）', () => {
     try {
       const { tools } = await client.listTools()
       expect(tools.map(tool => tool.name).sort()).toEqual([
-        'memory_forget', 'memory_health', 'memory_read', 'memory_save', 'memory_search',
+        'memory_forget', 'memory_health', 'memory_read', 'memory_recall', 'memory_save', 'memory_search',
       ])
       const saved = await callJson<{ id: string }>(client, 'memory_save', {
-        title: '经 HTTP MCP 保存', text: 'http-mcp-marker 正文', origin: 'user-stated',
+        title: '经 HTTP MCP 保存', text: 'http-mcp-marker 正文', origin: 'user-stated', type: 'knowledge',
       })
-      // 回读同一条：写入经的就是 serve 进程里那份 core
+      // 回读同一条：写入经的就是 serve 进程里那个上下文平面
       const read = await callJson<{ id: string; title: string; source: { sessionId: string } }>(client, 'memory_read', { id: saved.id })
       expect(read).toMatchObject({ id: saved.id, title: '经 HTTP MCP 保存', source: { sessionId: 'mcp:http-spec' } })
     } finally {
       await client.close()
       await http.server.close()
-      await http.core.close()
       await rm(http.root, { recursive: true, force: true })
     }
   })
@@ -313,7 +316,6 @@ describe('HTTP 模式（serve）', () => {
       expect(await escaped.text()).not.toContain(sentinel)
     } finally {
       await http.server.close()
-      await http.core.close()
       await rm(http.root, { recursive: true, force: true })
       await rm(base, { recursive: true, force: true })
     }
@@ -326,7 +328,6 @@ describe('HTTP 模式（serve）', () => {
       expect((await postCommand(plain.server)).status).toBe(200)
     } finally {
       await plain.server.close()
-      await plain.core.close()
       await rm(plain.root, { recursive: true, force: true })
     }
   })
@@ -335,10 +336,10 @@ describe('HTTP 模式（serve）', () => {
     const root = await mkdtemp(join(tmpdir(), 'pm-mcp-lock-'))
     const calls: number[] = []
     const stub: RootLock = { run: async <T>(fn: () => Promise<T>): Promise<T> => { calls.push(1); return fn() } }
-    const core = await createServeCore({ root, client: 'http-spec', log: silentLog, lock: stub })
+    const context = await startContext(root, 'http-spec', stub)
     try {
       const stamp = Date.now()
-      await core.store.create(memoryRecordSchema.parse({
+      await context.store.create(memoryRecordSchema.parse({
         id: 'mem_lock_injected', name: '注入锁的条目', type: 'knowledge', scope: 'global', tags: [],
         content: '正文', summary: '正文',
         source: { sessionId: 'http-spec', eventRange: [0, 0], sourceMode: 'user-explicit' },
@@ -349,7 +350,6 @@ describe('HTTP 模式（serve）', () => {
       expect(calls.length).toBeGreaterThan(0)
       await expect(stat(join(root, '.state', 'lock', 'write-lock.sqlite'))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
-      await core.close()
       await rm(root, { recursive: true, force: true })
     }
   })
