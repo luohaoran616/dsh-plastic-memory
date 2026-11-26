@@ -17,7 +17,8 @@
     "main": "./lib/index.js",
     "exports": {
       ".": "./lib/index.js",
-      "./*": "./lib/*"
+      "./*": "./lib/*",
+      "./*.ts": "./lib/*.js"
     }
   },
   "files": [
