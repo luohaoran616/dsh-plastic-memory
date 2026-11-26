@@ -37,16 +37,16 @@
 - `createAnchorLocator({ enabled?, zcodeDir?, antigravityDir?, retryDelaysMs?, log? })` → `{ locate(args), reader(scheme) }`。缺省目录 `~/.zcode/cli`、`~/.gemini/antigravity`；根目录不存在的适配器不启用。
 - `ANCHOR_WINDOW_CAP = 24`，与 `source.ts` 的 `WINDOW_CAP` 同值（用例守它们相等）。
 
-- [ ] 失败测试：
+- [x] 失败测试：
   - 编解码：`zcode:sess_…`、`antigravity:<uuid>`、`mcp:zcode`、裸 DSH id；不合形状的 id 不拼路径、读不了。
   - ZCode 定位（临时库按真实 DDL 建，行按真实形状造）：全等的最新一条命中，锚的起点是当轮首条非 synthetic 的用户消息、终点是该会话最大 `sequence`；`title` 或 `text` 差一个字不认；只找近十分钟的行；起点找不到取 0。
   - 库结构变了（缺表、缺列）→ `undefined`，每个进程只警告一次；根目录不存在 → 不启用、零 I/O。
   - 开窗：从起点往后、默认覆盖 `[起点, 终点]`、`window` 收窄、封顶 24 行、每行 400 字、`reasoning` 与步进标记计入 `skipped`。
   - `enabled: false` → `locate` 回 `undefined` 且不碰库。
   - 不留文件：没有 `-wal` 时按 `immutable` 打开，关闭后库目录与打开前逐项相同；有 `-wal` 时用已有的旁路文件、不新建；
-    自己建出来的旁路文件关闭后，`-wal` 为 0 字节的删掉，非空的留着。
-- [ ] 实现到测试通过。
-- [ ] Commit `feat(anchor): scheme codec and the ZCode session adapter`
+    自己建出来的旁路文件关闭后，`-wal` 为 0 字节的删掉，非空的留着（该路径正常流程到不了，`sweepOwnSidecars` 单测直守）。
+- [x] 实现到测试通过（26/26；候选会话改走 `tool_usage` 的时间窗索引，见设计说明 §A3 的更新）。
+- [x] Commit `feat(anchor): scheme codec and the ZCode session adapter`
 
 ## Task 2: Antigravity 适配器
 

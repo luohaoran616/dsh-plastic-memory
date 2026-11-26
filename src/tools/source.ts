@@ -35,9 +35,12 @@ export type SourceResult =
   | { kind: 'rejected'; memoryId: string; code: SourceRejectCode; reason: string }
   | { kind: 'unavailable'; memoryId: string; reason: string }
 
-/** 窗口上限：readEvent 的 readWindowMax=50，我们收紧到 24 控制 token。 */
-const WINDOW_CAP = 24
-const TEXT_CAP = 400
+/**
+ * 窗口上限：readEvent 的 readWindowMax=50，我们收紧到 24 控制 token。
+ * 客户端锚适配器（tools/anchor*.ts）按同值开窗与截断；tests/anchor.spec.ts 守两组常量相等。
+ */
+export const WINDOW_CAP = 24
+export const TEXT_CAP = 400
 
 /** 从事件 data 里提取可读文本（用户/助手消息、工具结果）；提不出返回 null（结构事件）。 */
 export function extractEventText(event: RawEvent): { role: string; text: string } | null {
